@@ -61,10 +61,10 @@ dotnet run --project Taoliao.CLI
 
 ```bash
 dotnet run --project Taoliao.CLI -- \
-    -d docs/需求清单.xlsx \
-    -m docs/角钢市场清单.xlsx \
-    -l docs/损耗规则.xlsx \
-    -o output/套料结果.xlsx \
+    -d ../docs/需求清单.xlsx \
+    -m ../docs/角钢市场清单.xlsx \
+    -l ../docs/损耗规则.xlsx \
+    -o ../output/套料结果.xlsx \
     --max-parts 3 \
     --max-materials 3 \
     --max-remainder 1000 \
@@ -75,10 +75,10 @@ dotnet run --project Taoliao.CLI -- \
 
 | 参数 | 缩写 | 默认值 | 说明 |
 |-----|------|-------|------|
-| `--demand` | `-d` | docs/需求清单.xlsx | 需求清单文件路径 |
-| `--market` | `-m` | docs/角钢市场清单.xlsx | 市场清单文件路径 |
-| `--loss` | `-l` | docs/损耗规则.xlsx | 损耗规则文件路径 |
-| `--output` | `-o` | output/套料结果.xlsx | 输出文件路径 |
+| `--demand` | `-d` | ../docs/需求清单.xlsx | 需求清单文件路径 |
+| `--market` | `-m` | ../docs/角钢市场清单.xlsx | 市场清单文件路径 |
+| `--loss` | `-l` | ../docs/损耗规则.xlsx | 损耗规则文件路径 |
+| `--output` | `-o` | ../output/套料结果.xlsx | 输出文件路径 |
 | `--max-parts` | | 3 | 单根原材料最多零件号数 |
 | `--max-materials` | | 3 | 单零件号最多原材料数 |
 | `--max-remainder` | | 1000 | 余料上限(mm) |

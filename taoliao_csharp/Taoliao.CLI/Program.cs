@@ -8,11 +8,11 @@ class Program
 {
     static int Main(string[] args)
     {
-        // 默认参数
-        string demandFile = "docs/需求清单.xlsx";
-        string marketFile = "docs/角钢市场清单.xlsx";
-        string lossFile = "docs/损耗规则.xlsx";
-        string outputFile = "output/套料结果.xlsx";
+        // 默认参数 (相对于taoliao_csharp目录)
+        string demandFile = "../docs/需求清单.xlsx";
+        string marketFile = "../docs/角钢市场清单.xlsx";
+        string lossFile = "../docs/损耗规则.xlsx";
+        string outputFile = "../output/套料结果.xlsx";
         int maxPartsPerMaterial = 3;
         int maxMaterialsPerPart = 3;
         int maxRemainder = 1000;
@@ -132,10 +132,10 @@ class Program
         Console.WriteLine("用法: Taoliao.CLI [选项]");
         Console.WriteLine();
         Console.WriteLine("选项:");
-        Console.WriteLine("  -d, --demand <文件>       需求清单文件路径 (默认: docs/需求清单.xlsx)");
-        Console.WriteLine("  -m, --market <文件>       市场清单文件路径 (默认: docs/角钢市场清单.xlsx)");
-        Console.WriteLine("  -l, --loss <文件>         损耗规则文件路径 (默认: docs/损耗规则.xlsx)");
-        Console.WriteLine("  -o, --output <文件>       输出文件路径 (默认: output/套料结果.xlsx)");
+        Console.WriteLine("  -d, --demand <文件>       需求清单文件路径 (默认: ../docs/需求清单.xlsx)");
+        Console.WriteLine("  -m, --market <文件>       市场清单文件路径 (默认: ../docs/角钢市场清单.xlsx)");
+        Console.WriteLine("  -l, --loss <文件>         损耗规则文件路径 (默认: ../docs/损耗规则.xlsx)");
+        Console.WriteLine("  -o, --output <文件>       输出文件路径 (默认: ../output/套料结果.xlsx)");
         Console.WriteLine("  --max-parts <数量>        单根材料最多零件号数 (默认: 3)");
         Console.WriteLine("  --max-materials <数量>    单零件号最多原材料数 (默认: 3)");
         Console.WriteLine("  --max-remainder <毫米>    余料上限(mm) (默认: 1000)");

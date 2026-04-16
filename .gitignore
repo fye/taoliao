@@ -26,6 +26,17 @@ ENV/
 env/
 .venv/
 
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+*.exe
+*.exe.config
+
 # IDE
 .idea/
 .vscode/
@@ -33,10 +44,9 @@ env/
 *.swo
 *~
 
-# Output
-output/
-*.xlsx
-!docs/*.xlsx
+# Output (keep directory structure)
+output/*.xlsx
+!output/.gitkeep
 
 # OS
 .DS_Store
