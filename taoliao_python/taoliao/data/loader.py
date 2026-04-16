@@ -32,10 +32,14 @@ class DataLoader:
 
         parts = []
         for _, row in df.iterrows():
+            spec = str(row.get('规格', ''))
+            # 统一规格格式：将 * 替换为 X
+            spec = spec.replace('*', 'X').upper()
+
             part = Part(
                 part_no=str(row.get('部件号', '')),
                 material=str(row.get('材质', '')),
-                spec=str(row.get('规格', '')),
+                spec=spec,
                 length=int(row.get('长度(mm)', 0)),
                 quantity=int(row.get('单基数量(件)', 1)),
                 width=self._safe_int(row.get('宽度(mm)')),
@@ -64,9 +68,13 @@ class DataLoader:
 
         materials = []
         for _, row in df.iterrows():
+            spec = str(row.get('规格全称', ''))
+            # 统一规格格式：将 * 替换为 X
+            spec = spec.replace('*', 'X').upper()
+
             material = RawMaterial(
                 material_type=str(row.get('材质', '')),
-                spec=str(row.get('规格全称', '')),
+                spec=spec,
                 length=int(row.get('长度', 0)),
                 stock=self._safe_int(row.get('A市场货存量', 0))
             )
