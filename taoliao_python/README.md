@@ -52,7 +52,7 @@ python main.py --demand ../docs/需求清单.xlsx \
                --loss ../docs/损耗规则.xlsx \
                --output ../output/套料结果.xlsx \
                --max-parts 3 \
-               --max-materials 3 \
+               --max-materials 5 \
                --max-remainder 1000 \
                --time-limit 60
 ```
@@ -66,7 +66,7 @@ python main.py --demand ../docs/需求清单.xlsx \
 | `--loss` | `-l` | ../docs/损耗规则.xlsx | 损耗规则文件路径 |
 | `--output` | `-o` | ../output/套料结果.xlsx | 输出文件路径 |
 | `--max-parts` | | 3 | 单根原材料最多零件号数 |
-| `--max-materials` | | 3 | 单零件号最多原材料数 |
+| `--max-materials` | | 5 | 单零件号最多原材料数 |
 | `--max-remainder` | | 1000 | 余料上限(mm) |
 | `--time-limit` | | 3600 | 每分组求解时间限制(秒) |
 
@@ -108,7 +108,7 @@ materials = loader.load_materials('../docs/角钢市场清单.xlsx')
 # 配置参数
 config = NestingConfig(
     max_parts_per_material=3,
-    max_materials_per_part=3,
+    max_materials_per_part=5,
     max_remainder=1000,
     time_limit=60
 )

@@ -174,7 +174,7 @@ class NestingResult:
 class NestingConfig:
     """套料配置参数"""
     max_parts_per_material: int = 3      # 单根原材料零件号上限
-    max_materials_per_part: int = 3      # 单零件号原材料上限
+    max_materials_per_part: int = 5      # 单零件号原材料上限
     max_remainder: int = 1000            # 余料上限(mm)
     time_limit: int = 3600               # 求解时间限制(秒)
     allow_material_substitution: bool = True  # 是否允许材质替代

@@ -299,7 +299,7 @@ public class NestingConfig
     /// <summary>
     /// 单零件号原材料上限
     /// </summary>
-    public int MaxMaterialsPerPart { get; set; } = 3;
+    public int MaxMaterialsPerPart { get; set; } = 5;
 
     /// <summary>
     /// 余料上限(mm)

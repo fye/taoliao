@@ -21,7 +21,7 @@ def main():
 示例:
   python main.py
   python main.py --demand docs/需求清单.xlsx --output output/result.xlsx
-  python main.py --max-parts 3 --max-materials 3 --max-remainder 1000
+  python main.py --max-parts 3 --max-materials 5 --max-remainder 1000
         """
     )
 

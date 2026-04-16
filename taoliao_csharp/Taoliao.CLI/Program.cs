@@ -137,7 +137,7 @@ class Program
         Console.WriteLine("  -l, --loss <文件>         损耗规则文件路径 (默认: ../docs/损耗规则.xlsx)");
         Console.WriteLine("  -o, --output <文件>       输出文件路径 (默认: ../output/套料结果.xlsx)");
         Console.WriteLine("  --max-parts <数量>        单根材料最多零件号数 (默认: 3)");
-        Console.WriteLine("  --max-materials <数量>    单零件号最多原材料数 (默认: 3)");
+        Console.WriteLine("  --max-materials <数量>    单零件号最多原材料数 (默认: 5)");
         Console.WriteLine("  --max-remainder <毫米>    余料上限(mm) (默认: 1000)");
         Console.WriteLine("  --time-limit <秒>         求解时间限制(秒) (默认: 60)");
         Console.WriteLine("  -h, --help                显示帮助信息");

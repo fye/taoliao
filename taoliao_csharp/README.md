@@ -66,7 +66,7 @@ dotnet run --project Taoliao.CLI -- \
     -l ../docs/损耗规则.xlsx \
     -o ../output/套料结果.xlsx \
     --max-parts 3 \
-    --max-materials 3 \
+    --max-materials 5 \
     --max-remainder 1000 \
     --time-limit 60
 ```
@@ -80,7 +80,7 @@ dotnet run --project Taoliao.CLI -- \
 | `--loss` | `-l` | ../docs/损耗规则.xlsx | 损耗规则文件路径 |
 | `--output` | `-o` | ../output/套料结果.xlsx | 输出文件路径 |
 | `--max-parts` | | 3 | 单根原材料最多零件号数 |
-| `--max-materials` | | 3 | 单零件号最多原材料数 |
+| `--max-materials` | | 5 | 单零件号最多原材料数 |
 | `--max-remainder` | | 1000 | 余料上限(mm) |
 | `--time-limit` | | 60 | 每分组求解时间限制(秒) |
 
