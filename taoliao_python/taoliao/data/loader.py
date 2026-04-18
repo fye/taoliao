@@ -176,8 +176,15 @@ class DataLoader:
             parts = range_str.split('-')
             if len(parts) == 2:
                 try:
-                    min_val = int(parts[0].strip())
-                    max_val = int(parts[1].strip())
+                    # 移除每个部分可能的前缀
+                    min_str = parts[0].strip()
+                    max_str = parts[1].strip()
+                    if prefix and min_str.startswith(prefix):
+                        min_str = min_str[len(prefix):]
+                    if prefix and max_str.startswith(prefix):
+                        max_str = max_str[len(prefix):]
+                    min_val = int(min_str)
+                    max_val = int(max_str)
                     return (min_val, max_val)
                 except ValueError:
                     pass
@@ -227,5 +234,10 @@ class DataLoader:
                 # 同时添加带B后缀的版本
                 if not m.endswith('B'):
                     materials.append(m + 'B')
+                # Q355和Q345是新旧标准的关系，需要同时支持
+                if m == 'Q355':
+                    materials.extend(['Q345', 'Q345B'])
+                elif m == 'Q355B':
+                    materials.extend(['Q345', 'Q345B'])
 
         return materials
