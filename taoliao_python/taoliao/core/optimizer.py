@@ -252,19 +252,23 @@ class NestingOptimizer:
                     constraint2.SetCoefficient(z[l, i, j], 1)
                     constraint2.SetCoefficient(y[l, i], -1)
 
-        # 余料约束 - 作为软约束（惩罚项加入目标函数）
+        # 余料约束 - 改为软约束（不等式），避免INFEASIBLE
         # 引入余料变量 r[l, i]
         r = {}  # 余料变量
         for l in unique_lengths:
             for i in range(max_materials_needed):
                 r[l, i] = solver.NumVar(0, l, f'r_{l}_{i}')
 
-                # 余料 = L*y - Σ(x*length) - head_tail*y - single_cut*Σx
-                constraint = solver.Constraint(0, 0, f'remainder_eq_{l}_{i}')
+                # 余料 >= L*y - Σ(x*length) - head_tail*y - single_cut*Σx
+                # 即：r + Σ(x*length) + single_cut*Σx >= L*y - head_tail*y
+                # 改为：r + Σ(x*(length+single_cut)) >= (L-head_tail)*y
+                # 等价于：r >= (L-head_tail)*y - Σ(x*(length+single_cut))
+                # 用不等式约束：r - (L-head_tail)*y + Σ(x*(length+single_cut)) >= 0
+                constraint = solver.Constraint(0, solver.infinity(), f'remainder_eq_{l}_{i}')
                 constraint.SetCoefficient(r[l, i], 1)
-                constraint.SetCoefficient(y[l, i], l - loss_rule.head_tail_loss)
+                constraint.SetCoefficient(y[l, i], -(l - loss_rule.head_tail_loss))
                 for j, part in enumerate(merged_parts):
-                    constraint.SetCoefficient(x[l, i, j], -(part.length + loss_rule.single_cut_loss))
+                    constraint.SetCoefficient(x[l, i, j], part.length + loss_rule.single_cut_loss)
 
         # 对称性破除：相同长度的材料按顺序使用
         for l in unique_lengths:
