@@ -7,6 +7,10 @@ import argparse
 import sys
 from pathlib import Path
 
+# 禁用输出缓冲
+import os
+os.environ['PYTHONUNBUFFERED'] = '1'
+
 from taoliao.core import NestingOptimizer, NestingConfig
 from taoliao.data import DataLoader, ResultExporter
 from taoliao.config import Settings

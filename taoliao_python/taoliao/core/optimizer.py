@@ -150,9 +150,9 @@ class NestingOptimizer:
         # 计算总零件数量
         total_part_count = sum(p.quantity for p in merged_parts)
 
-        # 对于大规模问题（超过30个零件），直接使用贪心算法
+        # 对于大规模问题（超过50个零件），直接使用贪心算法
         # 因为MIP变量数太多，求解时间过长
-        if total_part_count > 30:
+        if total_part_count > 50:
             print(f"  零件数量: {total_part_count}个，使用贪心算法")
             greedy_solver = GreedyNestingSolver(self.config, self.loss_calculator)
             return greedy_solver.solve(parts, materials, spec, material_type)

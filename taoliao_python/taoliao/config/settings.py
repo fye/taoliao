@@ -13,7 +13,7 @@ class Settings:
     default_output_file: str = "../output/套料结果.xlsx"
 
     # 求解器配置
-    solver_time_limit: int = 3600  # 秒
+    solver_time_limit: int = 120  # 秒
     max_parts_per_material: int = 3
     max_materials_per_part: int = 5
     max_remainder: int = 1000  # mm
