@@ -147,6 +147,15 @@ class NestingOptimizer:
         unique_lengths = get_unique_material_lengths(materials)
         print(f"  可用原材料长度: {unique_lengths}")
 
+        # 计算总零件数量
+        total_part_count = sum(p.quantity for p in merged_parts)
+
+        # 对于大规模问题（超过50个零件），直接使用贪心算法
+        if total_part_count > 50:
+            print(f"  零件数量较多 ({total_part_count}个)，直接使用贪心算法")
+            greedy_solver = GreedyNestingSolver(self.config, self.loss_calculator)
+            return greedy_solver.solve(parts, materials, spec, material_type)
+
         # 创建MIP模型
         solver = pywraplp.Solver.CreateSolver('CBC')
         if not solver:
@@ -302,11 +311,14 @@ class NestingOptimizer:
             merged_parts, materials, loss_rule
         )
 
-        # 后处理：尝试优化低利用率的方案
-        cutting_plans = self._post_optimize(cutting_plans, merged_parts, materials, loss_rule)
+        # 对于大规模问题，跳过后处理优化
+        total_part_count = sum(p.quantity for p in merged_parts)
+        if total_part_count <= 50:
+            # 后处理：尝试优化低利用率的方案
+            cutting_plans = self._post_optimize(cutting_plans, merged_parts, materials, loss_rule)
 
-        # 全局优化：尝试用更短的材料组合替换当前方案
-        cutting_plans = self._global_material_optimize(cutting_plans, materials, loss_rule)
+            # 全局优化：尝试用更短的材料组合替换当前方案
+            cutting_plans = self._global_material_optimize(cutting_plans, materials, loss_rule)
 
         return cutting_plans
 
