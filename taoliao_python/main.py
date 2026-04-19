@@ -10,6 +10,55 @@ from pathlib import Path
 from taoliao.core import NestingOptimizer, NestingConfig
 from taoliao.data import DataLoader, ResultExporter
 from taoliao.config import Settings
+from collections import defaultdict
+
+
+def validate_result(result, original_parts):
+    """
+    校验套料结果是否与原始需求一致
+
+    Args:
+        result: 套料结果
+        original_parts: 原始零件列表
+
+    Returns:
+        校验结果字典
+    """
+    # 统计原始需求中的零件数量
+    original_counts = defaultdict(int)
+    for part in original_parts:
+        key = (part.part_no, part.length)
+        original_counts[key] += part.quantity
+
+    # 统计套料结果中的零件数量
+    result_counts = defaultdict(int)
+    for plan in result.cutting_plans:
+        for part_no, length, qty in plan.parts:
+            key = (part_no, length)
+            result_counts[key] += qty
+
+    # 比较
+    details = []
+    all_keys = set(original_counts.keys()) | set(result_counts.keys())
+
+    for key in sorted(all_keys):
+        part_no, length = key
+        orig_qty = original_counts.get(key, 0)
+        result_qty = result_counts.get(key, 0)
+
+        if orig_qty != result_qty:
+            diff = result_qty - orig_qty
+            sign = '+' if diff > 0 else ''
+            details.append(f"部件号 {part_no} (长度{length}mm): 需求{orig_qty}个, 套料{result_qty}个 ({sign}{diff})")
+
+    if details:
+        return {
+            'valid': False,
+            'message': '零部件数量不一致',
+            'details': details
+        }
+
+    return {'valid': True}
 
 
 def main():
@@ -129,6 +178,16 @@ def main():
     print(f"\n开始优化...")
     optimizer = NestingOptimizer(config)
     result = optimizer.optimize(parts, materials, loss_rules)
+
+    # 校验套料结果
+    print(f"\n校验套料结果...")
+    validation_result = validate_result(result, parts)
+    if validation_result['valid']:
+        print(f"  校验通过: 零部件数量一致")
+    else:
+        print(f"  校验失败: {validation_result['message']}")
+        for detail in validation_result.get('details', []):
+            print(f"    {detail}")
 
     # 获取求解器统计
     stats = optimizer.get_solver_stats()

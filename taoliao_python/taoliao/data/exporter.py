@@ -98,11 +98,27 @@ class ResultExporter:
 
     def _write_material_summary(self, writer: pd.ExcelWriter):
         """写入原材料汇总"""
+        # 先统计每种材质规格下，不同长度的使用数量
+        length_distribution: Dict[Tuple[str, str], Dict[int, int]] = {}
+        for plan in self.result.cutting_plans:
+            key = (plan.raw_material.material_type, plan.raw_material.spec)
+            length = plan.raw_material.length
+            if key not in length_distribution:
+                length_distribution[key] = {}
+            length_distribution[key][length] = length_distribution[key].get(length, 0) + 1
+
         data = []
         for (material_type, spec), stats in self.result.material_summary.items():
+            # 格式化长度分布：套料长度 * 个数，多个用 + 拼接
+            length_stats = length_distribution.get((material_type, spec), {})
+            # 按长度降序排列
+            sorted_lengths = sorted(length_stats.items(), key=lambda x: x[0], reverse=True)
+            length_detail = ' + '.join(f'{length} * {count}' for length, count in sorted_lengths)
+
             data.append({
                 '材质': material_type,
                 '规格': spec,
+                '套料明细': length_detail,
                 '母材数量': stats['count'],
                 '总长度': stats['total_length'],
                 '使用长度': stats['total_used'],

@@ -127,6 +127,9 @@ class GreedyNestingSolver:
 
             cutting_plans.append(best_plan)
 
+        # 新增：短材料合并优化 - 尝试用一根长材料替换多根短材料
+        cutting_plans = self._merge_short_materials_optimize(cutting_plans, materials, loss_rule)
+
         # 新增：材料替换优化 - 尝试用更短的材料替换长的材料
         cutting_plans = self._material_substitution_optimize(cutting_plans, materials, loss_rule)
 
@@ -134,6 +137,115 @@ class GreedyNestingSolver:
         cutting_plans = self._post_optimize(cutting_plans, materials, loss_rule)
 
         return cutting_plans
+
+    def _merge_short_materials_optimize(
+        self,
+        cutting_plans: List[CuttingPlan],
+        materials: List[RawMaterial],
+        loss_rule: LossRule
+    ) -> List[CuttingPlan]:
+        """
+        短材料合并优化：尝试用一根长材料替换多根短材料
+
+        策略：收集所有零件，尝试用更长的材料重新分配，选择总材料长度最小的方案
+
+        Args:
+            cutting_plans: 切割方案列表
+            materials: 可用原材料列表
+            loss_rule: 损耗规则
+
+        Returns:
+            优化后的切割方案列表
+        """
+        if len(cutting_plans) <= 1:
+            return cutting_plans
+
+        # 获取可用原材料长度（升序）
+        available_lengths = sorted(set(m.length for m in materials))
+        length_to_material = {m.length: m for m in materials}
+
+        if len(available_lengths) <= 1:
+            return cutting_plans
+
+        # 收集所有零件
+        all_parts: Dict[Tuple[str, int], int] = {}
+        for plan in cutting_plans:
+            for part_no, length, qty in plan.parts:
+                key = (part_no, length)
+                all_parts[key] = all_parts.get(key, 0) + qty
+
+        if not all_parts:
+            return cutting_plans
+
+        # 当前方案的总材料长度
+        current_total = sum(p.raw_material.length for p in cutting_plans)
+
+        part_list = [(part_no, length, qty) for (part_no, length), qty in all_parts.items()]
+
+        # 尝试用不同策略重新分配
+        best_plans = cutting_plans
+        best_total = current_total
+
+        # 策略：按材料长度降序尝试（优先使用长材料）
+        for length in sorted(available_lengths, reverse=True):
+            raw_mat = length_to_material[length]
+
+            # 估算需要的根数
+            total_parts_length = sum(p[1] * p[2] for p in part_list)
+            est_count = max(1, int(total_parts_length / (length * 0.85)) + 1)
+
+            # 尝试用这种长度的材料分配
+            remaining = list(part_list)
+            new_plans = []
+
+            while any(p[2] > 0 for p in remaining):
+                active = [p for p in remaining if p[2] > 0]
+                if not active:
+                    break
+
+                # 使用贪心填充
+                plan = self._fill_material(raw_mat, active, loss_rule)
+
+                if plan is None:
+                    # 无法填充，尝试用更长的材料
+                    for longer_length in [l for l in available_lengths if l > length]:
+                        longer_mat = length_to_material[longer_length]
+                        plan = self._fill_material(longer_mat, active, loss_rule)
+                        if plan:
+                            break
+
+                    if plan is None:
+                        # 仍然无法填充，尝试用更短的材料
+                        for shorter_length in [l for l in available_lengths if l < length]:
+                            shorter_mat = length_to_material[shorter_length]
+                            plan = self._fill_material(shorter_mat, active, loss_rule)
+                            if plan:
+                                break
+
+                    if plan is None:
+                        break
+
+                # 更新剩余零件
+                for part_no, part_length, qty in plan.parts:
+                    for i, (p_no, p_len, p_qty) in enumerate(remaining):
+                        if p_no == part_no and p_len == part_length:
+                            remaining[i] = (p_no, p_len, p_qty - qty)
+                            break
+
+                new_plans.append(plan)
+
+            # 检查是否所有零件都分配了
+            if not any(p[2] > 0 for p in remaining):
+                new_total = sum(p.raw_material.length for p in new_plans)
+                if new_total < best_total:
+                    best_total = new_total
+                    best_plans = new_plans
+
+        if best_total < current_total:
+            saved = current_total - best_total
+            # print(f"  短材料合并优化: 节省 {saved/1000:.1f}m 材料")
+
+        return best_plans
 
     def _material_substitution_optimize(
         self,
@@ -448,66 +560,6 @@ class GreedyNestingSolver:
                         break
 
             new_plans.append(best_plan)
-
-        # 第三步：尝试将新方案与高利用率方案中的剩余零件合并
-        for new_plan_idx, new_plan in enumerate(new_plans):
-            if new_plan.utilization >= low_util_threshold:
-                continue
-
-            available_space = new_plan.remaining_length - loss_rule.single_cut_loss
-            if available_space <= 0:
-                continue
-
-            for (part_no, length), qty in list(high_util_parts.items()):
-                if qty <= 0:
-                    continue
-                if length > available_space:
-                    continue
-                if len(new_plan.parts) >= self.config.max_parts_per_material:
-                    if part_no not in set(p[0] for p in new_plan.parts):
-                        continue
-
-                max_fit = min(qty, available_space // length)
-                if max_fit <= 0:
-                    continue
-
-                # 计算添加后的新切割刀数（所有零件数量之和）
-                updated_parts = list(new_plan.parts)
-                found = False
-                for pi, (pn, pl, pq) in enumerate(updated_parts):
-                    if pn == part_no and pl == length:
-                        updated_parts[pi] = (pn, pl, pq + max_fit)
-                        found = True
-                        break
-                if not found:
-                    updated_parts.append((part_no, length, max_fit))
-
-                new_cut_count = sum(p[2] for p in updated_parts)
-                new_total_loss = loss_rule.head_tail_loss + loss_rule.single_cut_loss * new_cut_count
-                max_fit = min(max_fit, (new_plan.raw_material.length - new_plan.used_length - new_total_loss) // length)
-                if max_fit <= 0:
-                    continue
-
-                added_length = length * max_fit
-                new_remaining = new_plan.raw_material.length - (new_plan.used_length + added_length) - new_total_loss
-
-                if new_remaining >= 0:
-                    new_used = new_plan.used_length + added_length
-                    new_utilization = new_used / new_plan.raw_material.length
-
-                    new_plans[new_plan_idx] = CuttingPlan(
-                        raw_material=new_plan.raw_material,
-                        parts=updated_parts,
-                        cut_count=new_cut_count,
-                        single_cut_loss=loss_rule.single_cut_loss,
-                        head_tail_loss=loss_rule.head_tail_loss,
-                        used_length=new_used,
-                        total_loss=new_total_loss,
-                        remaining_length=new_remaining,
-                        utilization=new_utilization
-                    )
-                    high_util_parts[(part_no, length)] -= max_fit
-                    available_space = new_remaining - loss_rule.single_cut_loss
 
         # 构建最终结果
         result = []
