@@ -150,19 +150,25 @@ class NestingOptimizer:
         # 计算总零件数量
         total_part_count = sum(p.quantity for p in merged_parts)
 
-        # 对于大规模问题（超过50个零件），直接使用贪心算法
-        if total_part_count > 50:
-            print(f"  零件数量较多 ({total_part_count}个)，直接使用贪心算法")
-            greedy_solver = GreedyNestingSolver(self.config, self.loss_calculator)
-            return greedy_solver.solve(parts, materials, spec, material_type)
+        # 对于大规模问题，先尝试贪心算法作为基准
+        # 然后尝试MIP（时间限制更短），如果MIP找到更优解则使用MIP结果
+        greedy_solver = GreedyNestingSolver(self.config, self.loss_calculator)
+        greedy_plans = greedy_solver.solve(parts, materials, spec, material_type)
+        greedy_total = sum(p.raw_material.length for p in greedy_plans) if greedy_plans else float('inf')
+
+        # 对于大规模问题（超过100个零件），直接使用贪心算法
+        if total_part_count > 100:
+            print(f"  零件数量较多 ({total_part_count}个)，使用贪心算法")
+            return greedy_plans
 
         # 创建MIP模型
         solver = pywraplp.Solver.CreateSolver('CBC')
         if not solver:
             raise RuntimeError("无法创建CBC求解器")
 
-        # 设置时间限制
-        solver.SetTimeLimit(self.config.time_limit * 1000)
+        # 设置时间限制（对于中等规模问题，时间限制更短）
+        mip_time_limit = min(self.config.time_limit, 30)  # 最多30秒
+        solver.SetTimeLimit(mip_time_limit * 1000)
 
         # 创建决策变量
         # x[l][j] = 长度为l的原材料上切割零件j的数量
@@ -300,16 +306,20 @@ class NestingOptimizer:
         elif status == pywraplp.Solver.FEASIBLE:
             print(f"  找到可行解 (可能非最优). 目标值: {objective.Value():.0f}mm, 耗时: {solver.WallTime()/1000:.2f}s")
         else:
-            print(f"  MIP求解失败: {self._status_to_string(status)}, 回退到贪心算法")
-            # 回退到贪心算法
-            greedy_solver = GreedyNestingSolver(self.config, self.loss_calculator)
-            return greedy_solver.solve(parts, materials, spec, material_type)
+            print(f"  MIP求解失败: {self._status_to_string(status)}, 使用贪心算法结果")
+            return greedy_plans
 
         # 提取解
         cutting_plans = self._extract_solution(
             solver, x, y, z, unique_lengths, max_materials_needed,
             merged_parts, materials, loss_rule
         )
+
+        # 比较MIP和贪心算法的结果，选择总材料长度更小的
+        mip_total = sum(p.raw_material.length for p in cutting_plans) if cutting_plans else float('inf')
+        if greedy_total < mip_total:
+            print(f"  贪心算法结果更优 ({greedy_total/1000:.1f}m < {mip_total/1000:.1f}m)，使用贪心算法结果")
+            return greedy_plans
 
         # 对于大规模问题，跳过后处理优化
         total_part_count = sum(p.quantity for p in merged_parts)
