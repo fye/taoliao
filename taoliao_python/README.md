@@ -44,17 +44,22 @@ source venv/bin/activate
 python main.py
 ```
 
+### 指定需求文件
+
+```bash
+python main.py -d ../docs/EB21S-DJ原始表.xlsx
+```
+
 ### 完整参数
 
 ```bash
 python main.py --demand ../docs/需求清单.xlsx \
                --market ../docs/角钢市场清单.xlsx \
                --loss ../docs/损耗规则.xlsx \
-               --output ../output/套料结果.xlsx \
                --max-parts 3 \
-               --max-materials 5 \
+               --max-materials 3 \
                --max-remainder 1000 \
-               --time-limit 60
+               --time-limit 120
 ```
 
 ### 参数说明
@@ -64,11 +69,25 @@ python main.py --demand ../docs/需求清单.xlsx \
 | `--demand` | `-d` | ../docs/需求清单.xlsx | 需求清单文件路径 |
 | `--market` | `-m` | ../docs/角钢市场清单.xlsx | 市场清单文件路径 |
 | `--loss` | `-l` | ../docs/损耗规则.xlsx | 损耗规则文件路径 |
-| `--output` | `-o` | ../output/套料结果.xlsx | 输出文件路径 |
 | `--max-parts` | | 3 | 单根原材料最多零件号数 |
-| `--max-materials` | | 5 | 单零件号最多原材料数 |
+| `--max-materials` | | 3 | 单零件号最多套料方案数（按不同方案计数） |
 | `--max-remainder` | | 1000 | 余料上限(mm) |
-| `--time-limit` | | 3600 | 每分组求解时间限制(秒) |
+| `--time-limit` | | 120 | 每分组MIP求解时间限制(秒) |
+
+**注意**：
+- 输出文件默认保存到时间戳目录 `../output/YYYYMMDD_HHMMSS/`
+- 零件数 > 50 的分组使用贪心算法，≤ 50 使用 MIP 精确求解
+
+## 输出结果
+
+输出Excel文件包含以下Sheet页：
+
+| Sheet名称 | 说明 |
+|----------|------|
+| 原始需求清单 | 输入的零件需求列表 |
+| 套料结果 | 每根原材料的切割方案 |
+| 原材料汇总 | 各材质规格的使用统计 |
+| 未套料零部件 | 无法匹配原材料的零件（如有） |
 
 ## 项目结构
 
@@ -107,10 +126,10 @@ materials = loader.load_materials('../docs/角钢市场清单.xlsx')
 
 # 配置参数
 config = NestingConfig(
-    max_parts_per_material=3,
-    max_materials_per_part=5,
-    max_remainder=1000,
-    time_limit=60
+    max_parts_per_material=3,    # 单根材料最多3种零件号
+    max_materials_per_part=3,    # 单零件最多3种套料方案
+    max_remainder=1000,          # 余料上限1000mm
+    time_limit=120               # MIP求解时间限制120秒
 )
 
 # 执行优化
