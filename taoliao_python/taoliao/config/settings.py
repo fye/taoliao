@@ -15,5 +15,5 @@ class Settings:
     # 求解器配置
     solver_time_limit: int = 120  # 秒
     max_parts_per_material: int = 3
-    max_materials_per_part: int = 5
+    max_materials_per_part: int = 3  # 按不同套料方案计数
     max_remainder: int = 1000  # mm

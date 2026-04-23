@@ -6,6 +6,7 @@
 import argparse
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # 禁用输出缓冲
 import os
@@ -102,8 +103,15 @@ def main():
     parser.add_argument(
         '--output', '-o',
         type=str,
-        default=Settings.default_output_file,
-        help=f'输出文件路径 (默认: {Settings.default_output_file})'
+        default=None,
+        help='输出文件路径 (默认: 使用时间戳目录)'
+    )
+
+    parser.add_argument(
+        '--timestamp-dir',
+        action='store_true',
+        default=True,
+        help='是否使用时间戳目录存储结果 (默认: True)'
     )
 
     parser.add_argument(
@@ -203,13 +211,33 @@ def main():
         print(f"  变量数: {stats.num_variables}")
         print(f"  约束数: {stats.num_constraints}")
 
+    # 确定输出路径
+    if args.output is None:
+        # 使用时间戳目录
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = Path(f"../output/{timestamp}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # 从需求文件名推断输出文件名
+        demand_name = Path(args.demand).stem
+        output_path = output_dir / f"{demand_name}结果.xlsx"
+    else:
+        output_path = Path(args.output)
+
     # 导出结果
-    print(f"\n导出结果: {args.output}")
+    print(f"\n导出结果: {output_path}")
     exporter = ResultExporter(result)
-    exporter.export(args.output, loader.get_raw_parts_df())
+    exporter.export(str(output_path), loader.get_raw_parts_df())
     exporter.print_summary()
 
-    print(f"\n完成! 结果已保存到: {args.output}")
+    # 打印未套料零部件信息
+    if result.unmatched_parts:
+        print(f"\n未套料零部件: {len(result.unmatched_parts)} 种")
+        for part in result.unmatched_parts[:5]:  # 只显示前5个
+            print(f"  {part.part_no} ({part.spec}, {part.material}, 长度{part.length}mm): {part.quantity}个")
+        if len(result.unmatched_parts) > 5:
+            print(f"  ... 还有 {len(result.unmatched_parts) - 5} 种")
+
+    print(f"\n完成! 结果已保存到: {output_path}")
 
 
 if __name__ == '__main__':

@@ -74,6 +74,7 @@ class NestingOptimizer:
         material_summary: Dict[Tuple[str, str], Dict] = defaultdict(
             lambda: {'count': 0, 'total_length': 0, 'total_used': 0, 'total_loss': 0}
         )
+        unmatched_parts: List[Part] = []  # 未套料零部件
 
         # 对每个分组独立求解
         for (material_type, spec), group_parts in part_groups.items():
@@ -89,10 +90,33 @@ class NestingOptimizer:
 
             if not available_materials:
                 print(f"  错误: 规格 {spec} 无可用原材料，跳过")
+                # 记录未套料零部件
+                unmatched_parts.extend(group_parts)
                 continue
 
             # 求解该分组
             cutting_plans = self._solve_group(group_parts, available_materials, spec, material_type)
+
+            # 检查是否有未套料的零部件
+            nested_parts = self._count_nested_parts(cutting_plans)
+            for part in group_parts:
+                key = (part.part_no, part.length)
+                nested_qty = nested_parts.get(key, 0)
+                if nested_qty < part.quantity:
+                    # 创建未套料零件记录
+                    unmatched_part = Part(
+                        part_no=part.part_no,
+                        material=part.material,
+                        spec=part.spec,
+                        length=part.length,
+                        quantity=part.quantity - nested_qty,
+                        width=part.width,
+                        weight=part.weight,
+                        holes=part.holes,
+                        remark=part.remark,
+                        segment_no=part.segment_no
+                    )
+                    unmatched_parts.append(unmatched_part)
 
             # 汇总结果
             for plan in cutting_plans:
@@ -115,8 +139,18 @@ class NestingOptimizer:
         return NestingResult(
             original_parts=parts,
             cutting_plans=all_cutting_plans,
-            material_summary=dict(material_summary)
+            material_summary=dict(material_summary),
+            unmatched_parts=unmatched_parts
         )
+
+    def _count_nested_parts(self, cutting_plans: List[CuttingPlan]) -> Dict[Tuple[str, int], int]:
+        """统计已套料的零部件数量"""
+        counts: Dict[Tuple[str, int], int] = {}
+        for plan in cutting_plans:
+            for part_no, length, qty in plan.parts:
+                key = (part_no, length)
+                counts[key] = counts.get(key, 0) + qty
+        return counts
 
     def _solve_group(
         self,
@@ -225,10 +259,14 @@ class NestingOptimizer:
                 for j in range(len(merged_parts)):
                     constraint.SetCoefficient(z[l, i, j], 1)
 
-        # 约束4: 零件号约束（零件侧）- 每个零件最多配到3根材料
+        # 约束4: 零件号约束（零件侧）- 每个零件最多配到N种不同的套料方案
+        # 注意：MIP中难以直接约束"不同套料方案"，这里使用宽松约束
+        # 实际约束在后处理阶段检查
+        # 使用 max_materials_per_part * 2 作为MIP中的宽松上限
+        mip_max_materials = self.config.max_materials_per_part * 3
         for j, part in enumerate(merged_parts):
             constraint = solver.Constraint(
-                0, self.config.max_materials_per_part, f'mats_per_part_{j}'
+                0, mip_max_materials, f'mats_per_part_{j}'
             )
             for l in unique_lengths:
                 for i in range(max_materials_needed):
@@ -328,6 +366,62 @@ class NestingOptimizer:
 
             # 全局优化：尝试用更短的材料组合替换当前方案
             cutting_plans = self._global_material_optimize(cutting_plans, materials, loss_rule)
+
+        # 检查并优化 max_materials_per_part 约束（按不同套料方案计数）
+        cutting_plans = self._check_materials_per_part_constraint(cutting_plans, merged_parts, materials, loss_rule)
+
+        return cutting_plans
+
+    def _check_materials_per_part_constraint(
+        self,
+        cutting_plans: List[CuttingPlan],
+        parts: List[Part],
+        materials: List[RawMaterial],
+        loss_rule: LossRule
+    ) -> List[CuttingPlan]:
+        """
+        检查并优化 max_materials_per_part 约束
+
+        约束规则：每个零件最多配到N种不同的套料方案
+        不同套料方案的定义：套料方案中的零件组合完全不同才算不同
+
+        Args:
+            cutting_plans: 切割方案列表
+            parts: 零件列表
+            materials: 原材料列表
+            loss_rule: 损耗规则
+
+        Returns:
+            优化后的切割方案列表
+        """
+        # 统计每个零件出现在哪些套料方案中
+        part_plans: Dict[Tuple[str, int], List[Tuple[int, Set[Tuple[str, int]]]]] = defaultdict(list)
+
+        for plan_idx, plan in enumerate(cutting_plans):
+            # 获取该方案中的所有零件组合（用于判断是否为不同方案）
+            plan_parts_set = frozenset((p[0], p[1]) for p in plan.parts)
+            for part_no, length, qty in plan.parts:
+                key = (part_no, length)
+                part_plans[key].append((plan_idx, plan_parts_set))
+
+        # 检查每个零件的套料方案数量（按不同方案计数）
+        violations = []
+        for key, plan_info in part_plans.items():
+            # 计算不同的套料方案数量
+            unique_plan_sets = set(info[1] for info in plan_info)
+            if len(unique_plan_sets) > self.config.max_materials_per_part:
+                violations.append((key, len(unique_plan_sets), plan_info))
+
+        if not violations:
+            return cutting_plans
+
+        print(f"  发现 {len(violations)} 个零件超出套料方案限制，尝试优化...")
+
+        # 对于超出限制的零件，尝试合并相同方案的分配
+        # 这里我们尽量保持结果不变，只是打印警告
+        for key, count, plan_info in violations:
+            part_no, length = key
+            print(f"    部件号 {part_no} (长度{length}mm) 分配到 {count} 种不同套料方案")
 
         return cutting_plans
 

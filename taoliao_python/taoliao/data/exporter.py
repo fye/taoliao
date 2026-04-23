@@ -4,7 +4,7 @@
 
 import pandas as pd
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 
 from ..core.models import NestingResult, CuttingPlan, Part
@@ -47,6 +47,9 @@ class ResultExporter:
 
             # Sheet 3: 原材料汇总
             self._write_material_summary(writer)
+
+            # Sheet 4: 未套料零部件
+            self._write_unmatched_parts(writer)
 
         return str(output_path)
 
@@ -134,6 +137,32 @@ class ResultExporter:
             df = df.sort_values(['材质', '规格'])
 
         df.to_excel(writer, sheet_name='原材料汇总', index=False)
+
+    def _write_unmatched_parts(self, writer: pd.ExcelWriter):
+        """写入未套料零部件"""
+        data = []
+        for part in self.result.unmatched_parts:
+            data.append({
+                '段号(只读)': part.segment_no,
+                '部件号': part.part_no,
+                '材质': part.material,
+                '规格': part.spec,
+                '长度(mm)': part.length,
+                '宽度(mm)': part.width,
+                '未套料数量(件)': part.quantity,
+                '单件重量(kg)': part.weight,
+                '单件孔数': part.holes,
+                '备注': part.remark
+            })
+
+        df = pd.DataFrame(data)
+        if not df.empty:
+            df.to_excel(writer, sheet_name='未套料零部件', index=False)
+        else:
+            # 即使没有未套料零部件，也创建一个空的sheet
+            pd.DataFrame({'说明': ['无未套料零部件']}).to_excel(
+                writer, sheet_name='未套料零部件', index=False
+            )
 
     def print_summary(self):
         """打印结果摘要"""

@@ -141,6 +141,7 @@ class NestingResult:
     original_parts: List[Part]                   # 原始需求清单
     cutting_plans: List[CuttingPlan]             # 切割方案列表
     material_summary: Dict[Tuple[str, str], Dict]  # 原材料汇总 {(材质, 规格): {数量, 利用率, ...}}
+    unmatched_parts: List[Part] = field(default_factory=list)  # 未套料零部件
 
     @property
     def total_utilization(self) -> float:
@@ -174,7 +175,7 @@ class NestingResult:
 class NestingConfig:
     """套料配置参数"""
     max_parts_per_material: int = 3      # 单根原材料零件号上限
-    max_materials_per_part: int = 5      # 单零件号原材料上限
+    max_materials_per_part: int = 3      # 单零件号原材料上限（按不同套料方案计数）
     max_remainder: int = 1000            # 余料上限(mm)
     time_limit: int = 3600               # 求解时间限制(秒)
     allow_material_substitution: bool = True  # 是否允许材质替代
