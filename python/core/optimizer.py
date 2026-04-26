@@ -675,17 +675,23 @@ class MIPOptimizer:
             # 计算当前已选零件的总刀数
             current_total_cuts = sum(c[2] for c in combination)
 
-            # 计算添加这个零件后的总损耗
-            new_cut_count = current_total_cuts + 1
-            new_total_loss = single_cut_loss * new_cut_count + head_tail_loss
+            # 计算剩余可用空间（考虑头尾损耗）
+            # 先假设添加 1 个零件来检查是否有空间
+            initial_remaining = raw_material.length - used_length - single_cut_loss * (current_total_cuts + 1) - head_tail_loss
 
-            # 计算剩余可用空间
-            remaining_space = raw_material.length - used_length - new_total_loss
-
-            if part_length <= remaining_space:
-                # 计算能放多少个
-                max_fit = remaining_space // part_length
-                max_fit = min(max_fit, part_qty)
+            if part_length <= initial_remaining:
+                # 计算能放多少个（需要考虑每增加一个零件的损耗）
+                max_fit = 0
+                test_remaining = initial_remaining
+                while max_fit < part_qty:
+                    # 检查是否还能放一个
+                    if part_length <= test_remaining:
+                        max_fit += 1
+                        test_remaining -= part_length
+                        # 每增加一个零件，需要额外考虑单刀损耗
+                        test_remaining -= single_cut_loss
+                    else:
+                        break
 
                 if max_fit > 0:
                     combination.append((part_no, part_length, max_fit))
@@ -695,7 +701,7 @@ class MIPOptimizer:
         if not combination:
             return None
 
-        # 计算切割刀数
+        # 计算切割刀数（所有零件数量之和）
         cut_count = sum(c[2] for c in combination)
 
         # 计算总损耗
@@ -710,7 +716,7 @@ class MIPOptimizer:
         plan = CuttingPlan(
             raw_material=raw_material,
             parts=combination,
-            cut_count=len(combination),
+            cut_count=cut_count,  # 使用正确的切割刀数
             single_cut_loss=single_cut_loss,
             head_tail_loss=head_tail_loss,
             used_length=used_length,
