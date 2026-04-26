@@ -1,0 +1,17 @@
+[project]
+name = "taoliao"
+version = "1.0.0"
+description = "套料优化系统 - 电力行业角钢下料优化求解"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "pulp>=2.7.0",
+]
+
+[project.scripts]
+taoliao = "main:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
