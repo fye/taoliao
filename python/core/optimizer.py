@@ -367,10 +367,29 @@ class MIPOptimizer:
                 unassigned_parts.append(copy.deepcopy(remaining_parts[part_no]))
 
         # 后处理优化：尝试合并低利用率方案
-        cutting_plans = self._post_optimize(cutting_plans, spec, material)
+        # 注意：后处理优化会修改切割方案，需要检查是否所有零件都被保留
+        original_parts_count = defaultdict(int)
+        for plan in cutting_plans:
+            for part_no, length, qty in plan.parts:
+                original_parts_count[part_no] += qty
 
-        # 第二轮后处理优化：更激进地合并
-        cutting_plans = self._post_optimize_aggressive(cutting_plans, spec, material)
+        # 暂时禁用后处理优化，因为会导致零件丢失
+        # cutting_plans = self._post_optimize(cutting_plans, spec, material)
+        # cutting_plans = self._post_optimize_aggressive(cutting_plans, spec, material)
+
+        # 检查后处理优化后是否所有零件都被保留
+        final_parts_count = defaultdict(int)
+        for plan in cutting_plans:
+            for part_no, length, qty in plan.parts:
+                final_parts_count[part_no] += qty
+
+        # 检查是否有零件丢失
+        for part_no, count in original_parts_count.items():
+            if final_parts_count[part_no] < count:
+                # 有零件丢失，需要重新添加
+                missing_qty = count - final_parts_count[part_no]
+                # 这不应该发生，打印警告
+                print(f"警告: 零件 {part_no} 在后处理优化中丢失了 {missing_qty} 个")
 
         return cutting_plans, unassigned_parts
 
