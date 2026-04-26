@@ -101,7 +101,11 @@ class NestingResult:
     total_utilization: float                      # 总利用率
     total_loss_ratio: float                       # 总损耗比
 
-    # 每个零件号的套料方案次数统计
+    # 每个零件号的套料方案次数统计（按不同组合计数）
+    # key: 零件号, value: 不同 (数量) 组合的集合
+    part_plan_combinations: Dict[str, set] = field(default_factory=dict)
+
+    # 每个零件号的套料方案次数（组合数）
     part_plan_count: Dict[str, int] = field(default_factory=dict)
 
 

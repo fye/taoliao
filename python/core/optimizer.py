@@ -111,7 +111,9 @@ class MIPOptimizer:
         # 存储所有切割方案
         all_cutting_plans: List[CuttingPlan] = []
         unassigned_parts: List[Part] = []
-        part_plan_count: Dict[str, int] = defaultdict(int)
+
+        # 每个零件号的套料方案组合（存储不同的数量）
+        part_plan_combinations: Dict[str, set] = defaultdict(set)
 
         # 对每个零件组进行处理
         for (material_type, spec), group_parts in part_groups.items():
@@ -133,7 +135,7 @@ class MIPOptimizer:
             # 使用贪心算法求解
             group_part_nos = set(p.part_no for p in group_parts)
             group_plans, group_unassigned = self._solve_group_greedy(
-                remaining_parts, compatible_materials, part_plan_count, spec, material_type, group_part_nos
+                remaining_parts, compatible_materials, part_plan_combinations, spec, material_type, group_part_nos
             )
 
             all_cutting_plans.extend(group_plans)
@@ -142,6 +144,9 @@ class MIPOptimizer:
         # 计算汇总
         material_summary = self._calculate_material_summary(all_cutting_plans)
         total_utilization, total_loss_ratio = self._calculate_overall_metrics(all_cutting_plans)
+
+        # 计算每个零件号的套料方案次数（组合数）
+        part_plan_count = {part_no: len(combos) for part_no, combos in part_plan_combinations.items()}
 
         return NestingResult(
             original_parts=parts,
@@ -212,7 +217,7 @@ class MIPOptimizer:
         self,
         remaining_parts: Dict[str, Part],
         materials: List[RawMaterial],
-        part_plan_count: Dict[str, int],
+        part_plan_combinations: Dict[str, set],
         spec: str,
         material: str,
         group_part_nos: set
@@ -225,7 +230,7 @@ class MIPOptimizer:
         Args:
             remaining_parts: 剩余零件需求 {零件号: Part}
             materials: 可用原材料列表
-            part_plan_count: 零件号套料方案次数统计
+            part_plan_combinations: 零件号套料方案组合 {零件号: set(数量1, 数量2, ...)}
             spec: 规格字符串
             material: 材质
             group_part_nos: 当前分组的零件号集合
@@ -242,6 +247,10 @@ class MIPOptimizer:
         # 循环直到所有零件都处理完或没有可用原材料
         max_iterations = 100000
         iteration = 0
+
+        # 计算当前组合数（用于约束判断）
+        def get_plan_count(part_no: str) -> int:
+            return len(part_plan_combinations.get(part_no, set()))
 
         while iteration < max_iterations:
             iteration += 1
@@ -267,7 +276,7 @@ class MIPOptimizer:
                 plan = self._try_fit_material(
                     raw_material,
                     remaining_parts,
-                    part_plan_count,
+                    part_plan_combinations,
                     spec,
                     material,
                     group_part_nos
@@ -282,17 +291,16 @@ class MIPOptimizer:
                 cutting_plans.append(best_plan)
                 best_material.stock -= 1
 
-                # 更新剩余需求
+                # 更新剩余需求和套料方案组合
                 for part_no, length, qty in best_plan.parts:
                     remaining_parts[part_no].quantity -= qty
-                    part_plan_count[part_no] += 1
+                    part_plan_combinations[part_no].add(qty)
             else:
                 # 无法找到合适的方案，尝试放宽约束
-                # 单零件号套料方案上限是软约束，可以超过（但不超过硬约束上限）
                 plan = self._try_fit_material_relaxed(
                     sorted_materials,
                     remaining_parts,
-                    part_plan_count,
+                    part_plan_combinations,
                     spec,
                     material,
                     group_part_nos
@@ -304,7 +312,7 @@ class MIPOptimizer:
 
                     for part_no, length, qty in plan.parts:
                         remaining_parts[part_no].quantity -= qty
-                        part_plan_count[part_no] += 1
+                        part_plan_combinations[part_no].add(qty)
                 else:
                     # 真的无法套料了（理论上不应该发生）
                     break
@@ -320,7 +328,7 @@ class MIPOptimizer:
         self,
         raw_material: RawMaterial,
         remaining_parts: Dict[str, Part],
-        part_plan_count: Dict[str, int],
+        part_plan_combinations: Dict[str, set],
         spec: str,
         material: str,
         group_part_nos: set,
@@ -332,14 +340,14 @@ class MIPOptimizer:
         贪心策略：优先选择长零件，最大化利用率
 
         软约束策略（两级优先级）：
-        - 优先级0：套料方案次数 < 软约束上限（5次）
-        - 优先级1：软约束上限 <= 套料方案次数 < 硬约束上限（7次）
+        - 优先级0：套料方案组合数 < 软约束上限（5次）
+        - 优先级1：软约束上限 <= 套料方案组合数 < 硬约束上限（7次）
         - 超过硬约束上限的零件：默认不允许，allow_exceed_hard=True 时允许
 
         Args:
             raw_material: 原材料
             remaining_parts: 剩余零件需求
-            part_plan_count: 零件号套料方案次数统计
+            part_plan_combinations: 零件号套料方案组合 {零件号: set(数量1, 数量2, ...)}
             spec: 规格字符串
             material: 材质
             group_part_nos: 当前分组的零件号集合
@@ -353,7 +361,8 @@ class MIPOptimizer:
         for part_no in group_part_nos:
             part = remaining_parts[part_no]
             if part.quantity > 0:
-                count = part_plan_count.get(part_no, 0)
+                # 计算当前组合数
+                count = len(part_plan_combinations.get(part_no, set()))
                 # 两级优先级
                 if count < self.config.max_materials_per_part:
                     available_parts.append((part_no, part.length, part.quantity, 0))  # 最高优先级
@@ -435,7 +444,7 @@ class MIPOptimizer:
         self,
         sorted_materials: List[RawMaterial],
         remaining_parts: Dict[str, Part],
-        part_plan_count: Dict[str, int],
+        part_plan_combinations: Dict[str, set],
         spec: str,
         material: str,
         group_part_nos: set
@@ -449,7 +458,7 @@ class MIPOptimizer:
         Args:
             sorted_materials: 排序后的原材料列表
             remaining_parts: 剩余零件需求
-            part_plan_count: 零件号套料方案次数统计
+            part_plan_combinations: 零件号套料方案组合 {零件号: set(数量1, 数量2, ...)}
             spec: 规格字符串
             material: 材质
             group_part_nos: 当前分组的零件号集合
@@ -457,7 +466,19 @@ class MIPOptimizer:
         Returns:
             切割方案，如果无法套料则返回 None
         """
-        # 找到最佳方案（允许超过硬约束）
+        # 检查是否所有有剩余需求的零件都达到了硬约束上限
+        all_at_hard_limit = True
+        for part_no in group_part_nos:
+            if remaining_parts[part_no].quantity > 0:
+                count = len(part_plan_combinations.get(part_no, set()))
+                if count < self.config.max_materials_per_part_hard:
+                    all_at_hard_limit = False
+                    break
+
+        # 只有当所有零件都达到硬约束上限时，才允许超过硬约束
+        allow_exceed_hard = all_at_hard_limit
+
+        # 找到最佳方案
         best_plan = None
         best_utilization = -1
 
@@ -468,11 +489,11 @@ class MIPOptimizer:
             plan = self._try_fit_material(
                 raw_material,
                 remaining_parts,
-                part_plan_count,
+                part_plan_combinations,
                 spec,
                 material,
                 group_part_nos,
-                allow_exceed_hard=True  # 允许超过硬约束
+                allow_exceed_hard=allow_exceed_hard
             )
 
             if plan and plan.utilization > best_utilization:
