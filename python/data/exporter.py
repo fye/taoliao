@@ -122,17 +122,63 @@ class ResultExporter:
 
     def _export_material_summary(self, writer: pd.ExcelWriter):
         """导出原材料汇总"""
-        data = []
+        # 按材质+规格分组，统计每种长度的使用数量
+        from collections import defaultdict
 
-        for (material, spec), summary in self.result.material_summary.items():
+        # {(材质, 规格): {长度: 数量}}
+        length_counts = defaultdict(lambda: defaultdict(int))
+        # {(材质, 规格): {'total_length': 总长度, 'used_length': 使用长度, 'total_loss': 损耗长度}}
+        summary_data = defaultdict(lambda: {
+            'total_length': 0,
+            'used_length': 0,
+            'total_loss': 0,
+            'count': 0
+        })
+
+        for plan in self.result.cutting_plans:
+            key = (plan.raw_material.material_type, normalize_spec(plan.raw_material.spec))
+            length = plan.raw_material.length
+
+            # 统计每种长度的数量
+            length_counts[key][length] += 1
+
+            # 统计汇总数据
+            summary_data[key]['total_length'] += length
+            summary_data[key]['used_length'] += plan.used_length
+            summary_data[key]['total_loss'] += plan.total_loss
+            summary_data[key]['count'] += 1
+
+        # 构建输出数据
+        data = []
+        for (material, spec), length_dict in length_counts.items():
+            # 生成套料明细：长度1*根数1 + 长度2*根数2 + ...
+            detail_parts = [f"{length}*{count}" for length, count in sorted(length_dict.items())]
+            nesting_detail = " + ".join(detail_parts)
+
+            summary = summary_data[(material, spec)]
+            total_length = summary['total_length']
+            used_length = summary['used_length']
+            total_loss = summary['total_loss']
+            count = summary['count']
+
+            utilization = used_length / total_length if total_length > 0 else 0
+            loss_ratio = total_loss / total_length if total_length > 0 else 0
+
             row = {
                 '材质': material,
                 '规格': spec,
-                '所需数量': summary['count'],
-                '利用率': f"{summary['utilization']:.2%}",
-                '损耗比': f"{summary['loss_ratio']:.2%}"
+                '套料明细': nesting_detail,
+                '母材数量': count,
+                '总长度': total_length,
+                '使用长度': used_length,
+                '损耗长度': total_loss,
+                '利用率': f"{utilization:.2%}",
+                '损耗比': f"{loss_ratio:.2%}"
             }
             data.append(row)
+
+        # 按材质、规格排序
+        data.sort(key=lambda x: (x['材质'], x['规格']))
 
         df = pd.DataFrame(data)
         df.to_excel(writer, sheet_name='原材料汇总', index=False)
