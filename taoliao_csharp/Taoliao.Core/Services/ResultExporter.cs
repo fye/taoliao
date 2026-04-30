@@ -1,168 +1,197 @@
-using NPOI.SS.UserModel;
-using NPOI.XSSF.UserModel;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using OfficeOpenXml;
 using Taoliao.Core.Models;
 
-namespace Taoliao.Core.Services;
-
-/// <summary>
-/// 结果导出器
-/// </summary>
-public class ResultExporter
+namespace Taoliao.Core.Services
 {
-    private readonly NestingResult _result;
-
-    public ResultExporter(NestingResult result)
-    {
-        _result = result;
-    }
-
     /// <summary>
-    /// 导出结果到Excel文件
+    /// 结果导出器
     /// </summary>
-    public void Export(string outputPath, List<Part>? originalParts = null)
+    public class ResultExporter
     {
-        // 确保输出目录存在
-        var dir = Path.GetDirectoryName(outputPath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        private readonly NestingResult _result;
+
+        public ResultExporter(NestingResult result)
         {
-            Directory.CreateDirectory(dir);
+            _result = result;
         }
 
-        using var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write);
-        var workbook = new XSSFWorkbook();
-
-        // Sheet 1: 原始需求清单
-        WriteOriginalParts(workbook, originalParts);
-
-        // Sheet 2: 套料结果
-        WriteCuttingPlans(workbook);
-
-        // Sheet 3: 原材料汇总
-        WriteMaterialSummary(workbook);
-
-        workbook.Write(fs);
-    }
-
-    private void WriteOriginalParts(XSSFWorkbook workbook, List<Part>? originalParts)
-    {
-        var sheet = workbook.CreateSheet("原始需求清单");
-        var headerRow = sheet.CreateRow(0);
-
-        var headers = new[] { "段号(只读)", "部件号", "材质", "规格", "长度(mm)", "宽度(mm)",
-            "单基数量(件)", "单件重量(kg)", "单件孔数", "备注" };
-
-        for (int i = 0; i < headers.Length; i++)
+        /// <summary>
+        /// 导出结果到Excel文件
+        /// </summary>
+        public void Export(string outputPath, List<Part> originalParts = null)
         {
-            headerRow.CreateCell(i).SetCellValue(headers[i]);
+            // 确保输出目录存在
+            var dir = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            using (var package = new ExcelPackage())
+            {
+                // Sheet 1: 原始需求清单
+                WriteOriginalParts(package, originalParts);
+
+                // Sheet 2: 套料结果
+                WriteCuttingPlans(package);
+
+                // Sheet 3: 原材料汇总
+                WriteMaterialSummary(package);
+
+                package.SaveAs(new FileInfo(outputPath));
+            }
         }
 
-        var parts = originalParts ?? _result.OriginalParts;
-        for (int i = 0; i < parts.Count; i++)
+        private void WriteOriginalParts(ExcelPackage package, List<Part> originalParts)
         {
-            var row = sheet.CreateRow(i + 1);
-            var part = parts[i];
+            var worksheet = package.Workbook.Worksheets.Add("原始需求清单");
 
-            row.CreateCell(0).SetCellValue(part.SegmentNo ?? "");
-            row.CreateCell(1).SetCellValue(part.PartNo);
-            row.CreateCell(2).SetCellValue(part.Material);
-            row.CreateCell(3).SetCellValue(part.Spec);
-            row.CreateCell(4).SetCellValue(part.Length);
-            row.CreateCell(5).SetCellValue(part.Width?.ToString() ?? "");
-            row.CreateCell(6).SetCellValue(part.Quantity);
-            row.CreateCell(7).SetCellValue(part.Weight?.ToString() ?? "");
-            row.CreateCell(8).SetCellValue(part.Holes?.ToString() ?? "");
-            row.CreateCell(9).SetCellValue(part.Remark ?? "");
-        }
-    }
+            var headers = new[] { "段号(只读)", "部件号", "材质", "规格", "长度(mm)", "宽度(mm)",
+                "单基数量(件)", "单件重量(kg)", "单件孔数", "备注" };
 
-    private void WriteCuttingPlans(XSSFWorkbook workbook)
-    {
-        var sheet = workbook.CreateSheet("套料结果");
-        var headerRow = sheet.CreateRow(0);
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cells[1, i + 1].Value = headers[i];
+            }
 
-        var headers = new[] { "序号", "原材料材质", "规格", "原材料长度", "切割的部件号",
-            "切割刀数", "单刀损", "两头损耗", "使用长度", "剩余长度", "利用率", "损耗比", "备注" };
+            var parts = originalParts ?? _result.OriginalParts;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                var row = i + 2;
+                var part = parts[i];
 
-        for (int i = 0; i < headers.Length; i++)
-        {
-            headerRow.CreateCell(i).SetCellValue(headers[i]);
-        }
-
-        for (int i = 0; i < _result.CuttingPlans.Count; i++)
-        {
-            var row = sheet.CreateRow(i + 1);
-            var plan = _result.CuttingPlans[i];
-
-            row.CreateCell(0).SetCellValue(i + 1);
-            row.CreateCell(1).SetCellValue(plan.RawMaterial.MaterialType);
-            row.CreateCell(2).SetCellValue(plan.RawMaterial.Spec);
-            row.CreateCell(3).SetCellValue(plan.RawMaterial.Length);
-            row.CreateCell(4).SetCellValue(plan.PartsDescription);
-            row.CreateCell(5).SetCellValue(plan.CutCount);
-            row.CreateCell(6).SetCellValue(plan.SingleCutLoss);
-            row.CreateCell(7).SetCellValue(plan.HeadTailLoss);
-            row.CreateCell(8).SetCellValue(plan.UsedLength);
-            row.CreateCell(9).SetCellValue(plan.RemainingLength);
-            row.CreateCell(10).SetCellValue($"{plan.Utilization * 100:F2}%");
-            row.CreateCell(11).SetCellValue($"{plan.LossRatio * 100:F2}%");
-            row.CreateCell(12).SetCellValue("");
-        }
-    }
-
-    private void WriteMaterialSummary(XSSFWorkbook workbook)
-    {
-        var sheet = workbook.CreateSheet("原材料汇总");
-        var headerRow = sheet.CreateRow(0);
-
-        var headers = new[] { "材质", "规格", "母材数量", "总长度", "使用长度",
-            "损耗长度", "利用率", "损耗比" };
-
-        for (int i = 0; i < headers.Length; i++)
-        {
-            headerRow.CreateCell(i).SetCellValue(headers[i]);
+                worksheet.Cells[row, 1].Value = part.SegmentNo ?? "";
+                worksheet.Cells[row, 2].Value = part.PartNo;
+                worksheet.Cells[row, 3].Value = part.Material;
+                worksheet.Cells[row, 4].Value = part.Spec;
+                worksheet.Cells[row, 5].Value = part.Length;
+                worksheet.Cells[row, 6].Value = part.Width.HasValue ? part.Width.ToString() : "";
+                worksheet.Cells[row, 7].Value = part.Quantity;
+                worksheet.Cells[row, 8].Value = part.Weight.HasValue ? part.Weight.ToString() : "";
+                worksheet.Cells[row, 9].Value = part.Holes.HasValue ? part.Holes.ToString() : "";
+                worksheet.Cells[row, 10].Value = part.Remark ?? "";
+            }
         }
 
-        int rowIndex = 1;
-        foreach (var (key, summary) in _result.MaterialSummary.OrderBy(x => x.Key.Material).ThenBy(x => x.Key.Spec))
+        private void WriteCuttingPlans(ExcelPackage package)
         {
-            var row = sheet.CreateRow(rowIndex++);
+            var worksheet = package.Workbook.Worksheets.Add("套料结果");
 
-            row.CreateCell(0).SetCellValue(key.Material);
-            row.CreateCell(1).SetCellValue(key.Spec);
-            row.CreateCell(2).SetCellValue(summary.Count);
-            row.CreateCell(3).SetCellValue(summary.TotalLength);
-            row.CreateCell(4).SetCellValue(summary.TotalUsed);
-            row.CreateCell(5).SetCellValue(summary.TotalLoss);
-            row.CreateCell(6).SetCellValue($"{summary.Utilization * 100:F2}%");
-            row.CreateCell(7).SetCellValue($"{summary.LossRatio * 100:F2}%");
-        }
-    }
+            var headers = new[] { "序号", "原材料材质", "规格", "原材料长度", "切割的部件号",
+                "切割刀数", "单刀损", "两头损耗", "使用长度", "剩余长度", "利用率", "损耗比", "备注" };
 
-    /// <summary>
-    /// 打印结果摘要
-    /// </summary>
-    public void PrintSummary()
-    {
-        Console.WriteLine();
-        Console.WriteLine("============================================================");
-        Console.WriteLine("套料结果摘要");
-        Console.WriteLine("============================================================");
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cells[1, i + 1].Value = headers[i];
+            }
 
-        Console.WriteLine($"\n总切割方案数: {_result.CuttingPlans.Count}");
-        Console.WriteLine($"总利用率: {_result.TotalUtilization * 100:F2}%");
-        Console.WriteLine($"总损耗比: {_result.TotalLossRatio * 100:F2}%");
+            for (int i = 0; i < _result.CuttingPlans.Count; i++)
+            {
+                var row = i + 2;
+                var plan = _result.CuttingPlans[i];
 
-        Console.WriteLine("\n原材料使用情况:");
-        Console.WriteLine("------------------------------------------------------------");
-
-        foreach (var (key, summary) in _result.MaterialSummary.OrderBy(x => x.Key.Material).ThenBy(x => x.Key.Spec))
-        {
-            Console.WriteLine($"  {key.Material} {key.Spec}:");
-            Console.WriteLine($"    数量: {summary.Count} 根");
-            Console.WriteLine($"    利用率: {summary.Utilization * 100:F2}%");
-            Console.WriteLine($"    损耗比: {summary.LossRatio * 100:F2}%");
+                worksheet.Cells[row, 1].Value = i + 1;
+                worksheet.Cells[row, 2].Value = plan.RawMaterial.MaterialType;
+                worksheet.Cells[row, 3].Value = plan.RawMaterial.Spec;
+                worksheet.Cells[row, 4].Value = plan.RawMaterial.Length;
+                worksheet.Cells[row, 5].Value = plan.PartsDescription;
+                worksheet.Cells[row, 6].Value = plan.CutCount;
+                worksheet.Cells[row, 7].Value = plan.SingleCutLoss;
+                worksheet.Cells[row, 8].Value = plan.HeadTailLoss;
+                worksheet.Cells[row, 9].Value = plan.UsedLength;
+                worksheet.Cells[row, 10].Value = plan.RemainingLength;
+                worksheet.Cells[row, 11].Value = string.Format("{0:F2}%", plan.Utilization * 100);
+                worksheet.Cells[row, 12].Value = string.Format("{0:F2}%", plan.LossRatio * 100);
+                worksheet.Cells[row, 13].Value = "";
+            }
         }
 
-        Console.WriteLine("\n============================================================");
+        private void WriteMaterialSummary(ExcelPackage package)
+        {
+            var worksheet = package.Workbook.Worksheets.Add("原材料汇总");
+
+            var headers = new[] { "材质", "规格", "套料明细", "母材数量", "总长度", "使用长度",
+                "损耗长度", "利用率", "损耗比" };
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cells[1, i + 1].Value = headers[i];
+            }
+
+            // 统计每种材质规格下，不同长度的使用数量
+            var lengthDistribution = new Dictionary<string, Dictionary<int, int>>();
+            foreach (var plan in _result.CuttingPlans)
+            {
+                var key = string.Format("{0}_{1}", plan.RawMaterial.MaterialType, plan.RawMaterial.Spec);
+                var length = plan.RawMaterial.Length;
+                if (!lengthDistribution.ContainsKey(key))
+                    lengthDistribution[key] = new Dictionary<int, int>();
+                if (!lengthDistribution[key].ContainsKey(length))
+                    lengthDistribution[key][length] = 0;
+                lengthDistribution[key][length]++;
+            }
+
+            int rowIndex = 2;
+            var sortedKeys = _result.MaterialSummary.Keys.OrderBy(k => k).ToList();
+            foreach (var key in sortedKeys)
+            {
+                var summary = _result.MaterialSummary[key];
+                var row = rowIndex++;
+
+                // 格式化长度分布
+                string lengthDetail = "";
+                if (lengthDistribution.ContainsKey(key))
+                {
+                    var sortedLengths = lengthDistribution[key].OrderByDescending(kv => kv.Key).ToList();
+                    lengthDetail = string.Join(" + ", sortedLengths.Select(kv => string.Format("{0} * {1}", kv.Key, kv.Value)));
+                }
+
+                var parts = key.Split('_');
+                worksheet.Cells[row, 1].Value = parts[0];
+                worksheet.Cells[row, 2].Value = parts[1];
+                worksheet.Cells[row, 3].Value = lengthDetail;
+                worksheet.Cells[row, 4].Value = summary.Count;
+                worksheet.Cells[row, 5].Value = summary.TotalLength;
+                worksheet.Cells[row, 6].Value = summary.TotalUsed;
+                worksheet.Cells[row, 7].Value = summary.TotalLoss;
+                worksheet.Cells[row, 8].Value = string.Format("{0:F2}%", summary.Utilization * 100);
+                worksheet.Cells[row, 9].Value = string.Format("{0:F2}%", summary.LossRatio * 100);
+            }
+        }
+
+        /// <summary>
+        /// 打印结果摘要
+        /// </summary>
+        public void PrintSummary()
+        {
+            Console.WriteLine();
+            Console.WriteLine("============================================================");
+            Console.WriteLine("套料结果摘要");
+            Console.WriteLine("============================================================");
+
+            Console.WriteLine(string.Format("\n总切割方案数: {0}", _result.CuttingPlans.Count));
+            Console.WriteLine(string.Format("总利用率: {0:F2}%", _result.TotalUtilization * 100));
+            Console.WriteLine(string.Format("总损耗比: {0:F2}%", _result.TotalLossRatio * 100));
+
+            Console.WriteLine("\n原材料使用情况:");
+            Console.WriteLine("------------------------------------------------------------");
+
+            var sortedKeys = _result.MaterialSummary.Keys.OrderBy(k => k).ToList();
+            foreach (var key in sortedKeys)
+            {
+                var summary = _result.MaterialSummary[key];
+                var parts = key.Split('_');
+                Console.WriteLine(string.Format("  {0} {1}:", parts[0], parts[1]));
+                Console.WriteLine(string.Format("    数量: {0} 根", summary.Count));
+                Console.WriteLine(string.Format("    利用率: {0:F2}%", summary.Utilization * 100));
+                Console.WriteLine(string.Format("    损耗比: {0:F2}%", summary.LossRatio * 100));
+            }
+
+            Console.WriteLine("\n============================================================");
+        }
     }
 }

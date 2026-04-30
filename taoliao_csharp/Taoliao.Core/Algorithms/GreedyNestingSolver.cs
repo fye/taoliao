@@ -1,405 +1,412 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Taoliao.Core.Models;
 using Taoliao.Core.Services;
 
-namespace Taoliao.Core.Algorithms;
-
-/// <summary>
-/// 贪心套料求解器
-/// </summary>
-public class GreedyNestingSolver
+namespace Taoliao.Core.Algorithms
 {
-    private readonly NestingConfig _config;
-    private readonly LossCalculator _lossCalculator;
-
-    public GreedyNestingSolver(NestingConfig config, LossCalculator lossCalculator)
-    {
-        _config = config;
-        _lossCalculator = lossCalculator;
-    }
-
     /// <summary>
-    /// 使用贪心算法求解
+    /// 贪心套料求解器 - 核心目标：最小化总材料长度
     /// </summary>
-    public List<CuttingPlan> Solve(
-        List<Part> parts,
-        List<RawMaterial> materials,
-        string spec,
-        string materialType)
+    public class GreedyNestingSolver
     {
-        var lossRule = _lossCalculator.GetLossRule(spec, materialType);
+        private readonly NestingConfig _config;
+        private readonly LossCalculator _lossCalculator;
 
-        // 复制零件列表（带剩余数量）
-        var remainingParts = parts.Select(p => (p.PartNo, p.Length, p.Quantity)).ToList();
-
-        // 获取可用原材料长度（按升序排列）
-        var availableLengths = materials.Select(m => m.Length).Distinct().OrderBy(l => l).ToList();
-        var lengthToMaterial = materials.GroupBy(m => m.Length).ToDictionary(g => g.Key, g => g.First());
-
-        var cuttingPlans = new List<CuttingPlan>();
-
-        while (remainingParts.Any(p => p.Quantity > 0))
+        public GreedyNestingSolver(NestingConfig config, LossCalculator lossCalculator)
         {
-            // 过滤出还有需求的零件
-            var activeParts = remainingParts.Where(p => p.Quantity > 0).ToList();
-            if (!activeParts.Any())
-                break;
+            _config = config;
+            _lossCalculator = lossCalculator;
+        }
 
-            // 选择最优的原材料长度和填充方案
-            CuttingPlan? bestPlan = null;
-            double bestUtilization = -1;
+        /// <summary>
+        /// 使用贪心算法求解
+        /// 核心目标：在满足所有零件需求的前提下，最小化总材料长度
+        /// 策略：尝试多种贪心策略，选择总材料长度最小的方案
+        /// </summary>
+        public List<CuttingPlan> Solve(
+            List<Part> parts,
+            List<RawMaterial> materials,
+            string spec,
+            string materialType)
+        {
+            var lossRule = _lossCalculator.GetLossRule(spec, materialType);
 
-            foreach (var length in availableLengths)
+            // 获取可用原材料长度（升序）
+            var availableLengths = materials.Select(m => m.Length).Distinct().OrderBy(l => l).ToList();
+            var lengthToMaterial = materials.GroupBy(m => m.Length).ToDictionary(g => g.Key, g => g.First());
+
+            // 零件列表
+            var partList = parts.Select(p => new PartAllocation(p.PartNo, p.Length, p.Quantity)).ToList();
+
+            // 尝试多种策略，选择总材料长度最小的方案
+            List<CuttingPlan> bestPlans = null;
+            long bestTotalLength = long.MaxValue;
+
+            // 策略1：选择利用率最高的材料（核心策略）
+            var plans1 = SolveBestUtilization(partList, availableLengths, lengthToMaterial, lossRule);
+            if (plans1 != null && plans1.Count > 0)
             {
-                if (!lengthToMaterial.TryGetValue(length, out var rawMat))
-                    continue;
-
-                var plan = FillMaterial(rawMat, activeParts, lossRule);
-
-                if (plan != null && plan.Utilization > bestUtilization)
+                long total1 = plans1.Sum(p => (long)p.RawMaterial.Length);
+                if (total1 < bestTotalLength)
                 {
-                    bestUtilization = plan.Utilization;
-                    bestPlan = plan;
+                    bestTotalLength = total1;
+                    bestPlans = plans1;
                 }
             }
 
-            if (bestPlan == null)
+            // 策略2：固定使用最长材料
+            var plans2 = SolveWithFixedLength(partList, availableLengths, lengthToMaterial, lossRule);
+            if (plans2 != null && plans2.Count > 0)
             {
-                // 无法填充，使用最长的原材料
-                var length = availableLengths.Last();
-                var rawMat = lengthToMaterial[length];
-
-                // 只放一个最大的零件
-                var sortedParts = activeParts.OrderByDescending(p => p.Length).ToList();
-                var (partNo, partLength, _) = sortedParts.First();
-
-                var cutCount = 1;
-                var usedLength = partLength;
-                var totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
-                var remaining = length - usedLength - totalLoss;
-
-                bestPlan = new CuttingPlan
+                long total2 = plans2.Sum(p => (long)p.RawMaterial.Length);
+                if (total2 < bestTotalLength)
                 {
-                    RawMaterial = rawMat,
-                    Parts = new List<(string, int, int)> { (partNo, partLength, 1) },
-                    CutCount = cutCount,
-                    SingleCutLoss = lossRule.SingleCutLoss,
-                    HeadTailLoss = lossRule.HeadTailLoss,
-                    UsedLength = usedLength,
-                    TotalLoss = totalLoss,
-                    RemainingLength = remaining,
-                    Utilization = (double)usedLength / length
-                };
-            }
-
-            // 更新剩余零件数量
-            foreach (var (partNo, partLength, qty) in bestPlan.Parts)
-            {
-                for (int i = 0; i < remainingParts.Count; i++)
-                {
-                    if (remainingParts[i].PartNo == partNo && remainingParts[i].Length == partLength)
-                    {
-                        remainingParts[i] = (partNo, partLength, remainingParts[i].Quantity - qty);
-                        break;
-                    }
+                    bestTotalLength = total2;
+                    bestPlans = plans2;
                 }
             }
 
-            cuttingPlans.Add(bestPlan);
-        }
-
-        // 后处理优化：重新优化低利用率的方案
-        cuttingPlans = PostOptimize(cuttingPlans, materials, lossRule);
-
-        return cuttingPlans;
-    }
-
-    /// <summary>
-    /// 后处理优化：收集低利用率方案的零件，重新贪心分配
-    /// </summary>
-    private List<CuttingPlan> PostOptimize(
-        List<CuttingPlan> cuttingPlans,
-        List<RawMaterial> materials,
-        LossRule lossRule)
-    {
-        if (cuttingPlans.Count <= 1)
-            return cuttingPlans;
-
-        // 找出低利用率的方案（<70%）
-        const double lowUtilThreshold = 0.70;
-        var lowUtilIndices = new List<int>();
-        for (int i = 0; i < cuttingPlans.Count; i++)
-        {
-            if (cuttingPlans[i].Utilization < lowUtilThreshold)
-                lowUtilIndices.Add(i);
-        }
-
-        if (!lowUtilIndices.Any())
-            return cuttingPlans;
-
-        // 收集低利用率方案中的所有零件
-        var lowUtilParts = new Dictionary<(string, int), int>();  // (partNo, length) -> totalQty
-        foreach (var i in lowUtilIndices)
-        {
-            var plan = cuttingPlans[i];
-            foreach (var (partNo, length, qty) in plan.Parts)
+            // 策略3：优先使用短材料（某些场景更优）
+            var plans3 = SolvePreferShort(partList, availableLengths, lengthToMaterial, lossRule);
+            if (plans3 != null && plans3.Count > 0)
             {
-                var key = (partNo, length);
-                if (!lowUtilParts.ContainsKey(key))
-                    lowUtilParts[key] = 0;
-                lowUtilParts[key] += qty;
-            }
-        }
-
-        if (!lowUtilParts.Any())
-            return cuttingPlans;
-
-        // 收集高利用率方案中的零件（用于尝试重新组合）
-        var highUtilParts = new Dictionary<(string, int), int>();
-        for (int i = 0; i < cuttingPlans.Count; i++)
-        {
-            if (lowUtilIndices.Contains(i))
-                continue;
-            if (cuttingPlans[i].Utilization < lowUtilThreshold)
-                continue;
-            foreach (var (partNo, length, qty) in cuttingPlans[i].Parts)
-            {
-                var key = (partNo, length);
-                if (!highUtilParts.ContainsKey(key))
-                    highUtilParts[key] = 0;
-                highUtilParts[key] += qty;
-            }
-        }
-
-        // 收集所有可用原材料长度
-        var availableLengths = materials.Select(m => m.Length).Distinct().OrderBy(l => l).ToList();
-        var lengthToMaterial = materials.GroupBy(m => m.Length).ToDictionary(g => g.Key, g => g.First());
-
-        // 将低利用率方案的零件重新打包
-        var partList = lowUtilParts.Select(kv => (kv.Key.Item1, kv.Key.Item2, kv.Value)).ToList();
-        partList.Sort((a, b) => b.Item2.CompareTo(a.Item2));  // 按长度降序
-
-        var newPlans = new List<CuttingPlan>();
-        var remaining = partList.ToList();
-
-        while (remaining.Any(p => p.Quantity > 0))
-        {
-            var active = remaining.Where(p => p.Quantity > 0).ToList();
-            if (!active.Any())
-                break;
-
-            CuttingPlan? bestPlan = null;
-            double bestScore = -1;
-
-            foreach (var length in availableLengths)
-            {
-                if (!lengthToMaterial.TryGetValue(length, out var rawMat))
-                    continue;
-
-                var plan = FillMaterial(rawMat, active, lossRule);
-                if (plan != null)
+                long total3 = plans3.Sum(p => (long)p.RawMaterial.Length);
+                if (total3 < bestTotalLength)
                 {
-                    var score = plan.Utilization * 10000 - length / 1000.0;
-                    if (score > bestScore)
+                    bestTotalLength = total3;
+                    bestPlans = plans3;
+                }
+            }
+
+            return bestPlans ?? new List<CuttingPlan>();
+        }
+
+        /// <summary>
+        /// 策略：每次选择利用率最高的材料
+        /// </summary>
+        private List<CuttingPlan> SolveBestUtilization(
+            List<PartAllocation> partList,
+            List<int> availableLengths,
+            Dictionary<int, RawMaterial> lengthToMaterial,
+            LossRule lossRule)
+        {
+            var remainingParts = partList.Select(p => new PartAllocation(p.PartNo, p.Length, p.Quantity)).ToList();
+            var cuttingPlans = new List<CuttingPlan>();
+
+            // 按材料长度降序排列（优先尝试长材料）
+            var sortedLengths = availableLengths.OrderByDescending(l => l).ToList();
+
+            while (HasRemainingParts(remainingParts))
+            {
+                var activeParts = remainingParts.Where(p => p.Quantity > 0).ToList();
+                if (activeParts.Count == 0) break;
+
+                CuttingPlan bestPlan = null;
+                double bestUtilization = -1;
+
+                // 尝试所有材料，选择利用率最高的
+                foreach (var length in sortedLengths)
+                {
+                    var rawMat = lengthToMaterial[length];
+                    var plan = FillMaterial(rawMat, activeParts, lossRule);
+
+                    if (plan == null) continue;
+
+                    // 选择利用率最高的方案
+                    if (plan.Utilization > bestUtilization)
                     {
-                        bestScore = score;
+                        bestUtilization = plan.Utilization;
                         bestPlan = plan;
                     }
                 }
-            }
 
-            if (bestPlan == null)
-            {
-                // 无法填充，使用最长的原材料
-                var rawMat = lengthToMaterial[availableLengths.Last()];
-                var activeSorted = active.OrderByDescending(p => p.Length).ToList();
-                var (partNo, partLength, _) = activeSorted.First();
-
-                var cutCount = 1;
-                var usedLength = partLength;
-                var totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
-
-                bestPlan = new CuttingPlan
+                if (bestPlan == null)
                 {
-                    RawMaterial = rawMat,
-                    Parts = new List<(string, int, int)> { (partNo, partLength, 1) },
-                    CutCount = cutCount,
-                    SingleCutLoss = lossRule.SingleCutLoss,
-                    HeadTailLoss = lossRule.HeadTailLoss,
-                    UsedLength = usedLength,
-                    TotalLoss = totalLoss,
-                    RemainingLength = rawMat.Length - usedLength - totalLoss,
-                    Utilization = (double)usedLength / rawMat.Length
-                };
+                    // 没有材料能放下任何零件，使用最长的材料放一个零件
+                    var activeSorted = activeParts.OrderByDescending(p => p.Length).ToList();
+                    var part = activeSorted[0];
+
+                    RawMaterial rawMat = null;
+                    foreach (var length in sortedLengths)
+                    {
+                        if (length >= part.Length + lossRule.HeadTailLoss + lossRule.SingleCutLoss)
+                        {
+                            rawMat = lengthToMaterial[length];
+                            break;
+                        }
+                    }
+                    if (rawMat == null)
+                        rawMat = lengthToMaterial[sortedLengths.Last()];
+
+                    int cutCount = 1;
+                    int usedLength = part.Length;
+                    int totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
+                    int remaining = rawMat.Length - usedLength - totalLoss;
+
+                    bestPlan = new CuttingPlan
+                    {
+                        RawMaterial = rawMat,
+                        Parts = new List<PartAllocation> { new PartAllocation(part.PartNo, part.Length, 1) },
+                        CutCount = cutCount,
+                        SingleCutLoss = lossRule.SingleCutLoss,
+                        HeadTailLoss = lossRule.HeadTailLoss,
+                        UsedLength = usedLength,
+                        TotalLoss = totalLoss,
+                        RemainingLength = remaining,
+                        Utilization = (double)usedLength / rawMat.Length
+                    };
+                }
+
+                // 更新剩余零件
+                UpdateRemainingParts(remainingParts, bestPlan.Parts);
+                cuttingPlans.Add(bestPlan);
             }
 
-            // 更新剩余零件
-            foreach (var (partNo, partLength, qty) in bestPlan.Parts)
+            return cuttingPlans;
+        }
+
+        /// <summary>
+        /// 策略：固定使用最长材料，直到无法填充
+        /// </summary>
+        private List<CuttingPlan> SolveWithFixedLength(
+            List<PartAllocation> partList,
+            List<int> availableLengths,
+            Dictionary<int, RawMaterial> lengthToMaterial,
+            LossRule lossRule)
+        {
+            int maxLength = availableLengths.Max();
+            var maxMat = lengthToMaterial[maxLength];
+
+            var remainingParts = partList.Select(p => new PartAllocation(p.PartNo, p.Length, p.Quantity)).ToList();
+            var cuttingPlans = new List<CuttingPlan>();
+
+            var sortedLengths = availableLengths.OrderByDescending(l => l).ToList();
+
+            while (HasRemainingParts(remainingParts))
+            {
+                var activeParts = remainingParts.Where(p => p.Quantity > 0).ToList();
+                if (activeParts.Count == 0) break;
+
+                // 先尝试最长材料
+                var plan = FillMaterial(maxMat, activeParts, lossRule);
+
+                if (plan == null)
+                {
+                    // 最长材料放不下，尝试其他材料（按长度降序）
+                    foreach (var length in sortedLengths)
+                    {
+                        if (length < maxLength)
+                        {
+                            var rawMat = lengthToMaterial[length];
+                            plan = FillMaterial(rawMat, activeParts, lossRule);
+                            if (plan != null) break;
+                        }
+                    }
+                }
+
+                if (plan == null)
+                {
+                    // 没有材料能放下任何零件
+                    var activeSorted = activeParts.OrderByDescending(p => p.Length).ToList();
+                    var part = activeSorted[0];
+
+                    int cutCount = 1;
+                    int usedLength = part.Length;
+                    int totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
+                    int remaining = maxMat.Length - usedLength - totalLoss;
+
+                    plan = new CuttingPlan
+                    {
+                        RawMaterial = maxMat,
+                        Parts = new List<PartAllocation> { new PartAllocation(part.PartNo, part.Length, 1) },
+                        CutCount = cutCount,
+                        SingleCutLoss = lossRule.SingleCutLoss,
+                        HeadTailLoss = lossRule.HeadTailLoss,
+                        UsedLength = usedLength,
+                        TotalLoss = totalLoss,
+                        RemainingLength = remaining,
+                        Utilization = (double)usedLength / maxMat.Length
+                    };
+                }
+
+                // 更新剩余零件
+                UpdateRemainingParts(remainingParts, plan.Parts);
+                cuttingPlans.Add(plan);
+            }
+
+            return cuttingPlans;
+        }
+
+        /// <summary>
+        /// 策略：优先使用短材料（在能放下的前提下）
+        /// </summary>
+        private List<CuttingPlan> SolvePreferShort(
+            List<PartAllocation> partList,
+            List<int> availableLengths,
+            Dictionary<int, RawMaterial> lengthToMaterial,
+            LossRule lossRule)
+        {
+            var remainingParts = partList.Select(p => new PartAllocation(p.PartNo, p.Length, p.Quantity)).ToList();
+            var cuttingPlans = new List<CuttingPlan>();
+
+            // 按材料长度升序排列
+            var sortedLengths = availableLengths.OrderBy(l => l).ToList();
+
+            while (HasRemainingParts(remainingParts))
+            {
+                var activeParts = remainingParts.Where(p => p.Quantity > 0).ToList();
+                if (activeParts.Count == 0) break;
+
+                CuttingPlan bestPlan = null;
+
+                // 从短到长尝试，找到第一个能放下的
+                foreach (var length in sortedLengths)
+                {
+                    var rawMat = lengthToMaterial[length];
+                    var plan = FillMaterial(rawMat, activeParts, lossRule);
+
+                    if (plan != null)
+                    {
+                        bestPlan = plan;
+                        break;
+                    }
+                }
+
+                if (bestPlan == null)
+                {
+                    // 没有材料能放下任何零件，使用最长的材料放一个零件
+                    var activeSorted = activeParts.OrderByDescending(p => p.Length).ToList();
+                    var part = activeSorted[0];
+
+                    RawMaterial rawMat = null;
+                    foreach (var length in sortedLengths.OrderByDescending(l => l))
+                    {
+                        if (length >= part.Length + lossRule.HeadTailLoss + lossRule.SingleCutLoss)
+                        {
+                            rawMat = lengthToMaterial[length];
+                            break;
+                        }
+                    }
+                    if (rawMat == null)
+                        rawMat = lengthToMaterial[availableLengths.Last()];
+
+                    int cutCount = 1;
+                    int usedLength = part.Length;
+                    int totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
+                    int remaining = rawMat.Length - usedLength - totalLoss;
+
+                    bestPlan = new CuttingPlan
+                    {
+                        RawMaterial = rawMat,
+                        Parts = new List<PartAllocation> { new PartAllocation(part.PartNo, part.Length, 1) },
+                        CutCount = cutCount,
+                        SingleCutLoss = lossRule.SingleCutLoss,
+                        HeadTailLoss = lossRule.HeadTailLoss,
+                        UsedLength = usedLength,
+                        TotalLoss = totalLoss,
+                        RemainingLength = remaining,
+                        Utilization = (double)usedLength / rawMat.Length
+                    };
+                }
+
+                // 更新剩余零件
+                UpdateRemainingParts(remainingParts, bestPlan.Parts);
+                cuttingPlans.Add(bestPlan);
+            }
+
+            return cuttingPlans;
+        }
+
+        /// <summary>
+        /// 贪心填充单根原材料
+        /// </summary>
+        private CuttingPlan FillMaterial(
+            RawMaterial rawMaterial,
+            List<PartAllocation> parts,
+            LossRule lossRule)
+        {
+            int availableLength = rawMaterial.Length - lossRule.HeadTailLoss;
+
+            // 按长度降序排列零件
+            var sortedParts = parts.OrderByDescending(p => p.Length).ToList();
+
+            var selectedParts = new List<PartAllocation>();
+            var partNoSet = new HashSet<string>();
+
+            foreach (var part in sortedParts)
+            {
+                if (part.Quantity <= 0) continue;
+
+                // 检查零件号限制
+                if (partNoSet.Count >= _config.MaxPartsPerMaterial && !partNoSet.Contains(part.PartNo))
+                    continue;
+
+                // 计算当前已选零件的总长度和总数量
+                int currentLength = 0;
+                int currentCutCount = 0;
+                foreach (var p in selectedParts)
+                {
+                    currentLength += p.Length * p.Quantity;
+                    currentCutCount += p.Quantity;
+                }
+
+                // 每个零件都会增加 single_cut_loss 的损耗
+                int maxSpace = availableLength - currentLength - lossRule.SingleCutLoss * currentCutCount;
+                int maxQty = Math.Min(part.Quantity, maxSpace / (part.Length + lossRule.SingleCutLoss));
+
+                if (maxQty > 0)
+                {
+                    selectedParts.Add(new PartAllocation(part.PartNo, part.Length, maxQty));
+                    partNoSet.Add(part.PartNo);
+                }
+            }
+
+            if (selectedParts.Count == 0)
+                return null;
+
+            // 切割刀数 = 所有零件数量之和
+            int cutCount = selectedParts.Sum(p => p.Quantity);
+            int usedLength = selectedParts.Sum(p => p.Length * p.Quantity);
+            int totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
+            int remaining = rawMaterial.Length - usedLength - totalLoss;
+
+            return new CuttingPlan
+            {
+                RawMaterial = rawMaterial,
+                Parts = selectedParts,
+                CutCount = cutCount,
+                SingleCutLoss = lossRule.SingleCutLoss,
+                HeadTailLoss = lossRule.HeadTailLoss,
+                UsedLength = usedLength,
+                TotalLoss = totalLoss,
+                RemainingLength = remaining,
+                Utilization = (double)usedLength / rawMaterial.Length
+            };
+        }
+
+        private bool HasRemainingParts(List<PartAllocation> parts)
+        {
+            return parts.Any(p => p.Quantity > 0);
+        }
+
+        private void UpdateRemainingParts(List<PartAllocation> remaining, List<PartAllocation> used)
+        {
+            foreach (var usedPart in used)
             {
                 for (int i = 0; i < remaining.Count; i++)
                 {
-                    if (remaining[i].PartNo == partNo && remaining[i].Length == partLength)
+                    if (remaining[i].PartNo == usedPart.PartNo && remaining[i].Length == usedPart.Length)
                     {
-                        remaining[i] = (partNo, partLength, remaining[i].Quantity - qty);
+                        remaining[i] = new PartAllocation(
+                            remaining[i].PartNo,
+                            remaining[i].Length,
+                            remaining[i].Quantity - usedPart.Quantity);
                         break;
                     }
                 }
             }
-
-            newPlans.Add(bestPlan);
         }
-
-        // 第二轮：尝试将新方案与高利用率方案中的剩余零件合并
-        for (int newPlanIdx = 0; newPlanIdx < newPlans.Count; newPlanIdx++)
-        {
-            var newPlan = newPlans[newPlanIdx];
-            if (newPlan.Utilization >= lowUtilThreshold)
-                continue;
-
-            var availableSpace = newPlan.RemainingLength - lossRule.SingleCutLoss;
-            if (availableSpace <= 0)
-                continue;
-
-            // 查找可以从高利用率方案中"借出"的零件
-            foreach (var kv in highUtilParts.ToList())
-            {
-                var (partNo, length) = kv.Key;
-                var qty = kv.Value;
-
-                if (qty <= 0)
-                    continue;
-                if (length > availableSpace)
-                    continue;
-                if (newPlan.Parts.Count >= _config.MaxPartsPerMaterial)
-                {
-                    if (!newPlan.Parts.Any(p => p.PartNo == partNo))
-                        continue;
-                }
-
-                // 计算可以放多少
-                var maxFit = Math.Min(qty, availableSpace / length);
-                if (maxFit <= 0)
-                    continue;
-
-                var newCutCount = newPlan.CutCount + (newPlan.Parts.Any(p => p.PartNo == partNo) ? 0 : 1);
-                var newTotalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * newCutCount;
-                maxFit = Math.Min(maxFit, (newPlan.RawMaterial.Length - newPlan.UsedLength - newTotalLoss) / length);
-                if (maxFit <= 0)
-                    continue;
-
-                var addedLength = length * maxFit;
-                var newRemaining = newPlan.RawMaterial.Length - (newPlan.UsedLength + addedLength) - newTotalLoss;
-
-                if (newRemaining >= 0)
-                {
-                    var updatedParts = newPlan.Parts.ToList();
-                    var found = false;
-                    for (int pi = 0; pi < updatedParts.Count; pi++)
-                    {
-                        if (updatedParts[pi].PartNo == partNo && updatedParts[pi].Length == length)
-                        {
-                            updatedParts[pi] = (partNo, length, updatedParts[pi].Quantity + maxFit);
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
-                    {
-                        updatedParts.Add((partNo, length, maxFit));
-                        newCutCount = updatedParts.Count;
-                    }
-
-                    var newUsed = newPlan.UsedLength + addedLength;
-                    newTotalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * updatedParts.Count;
-                    newRemaining = newPlan.RawMaterial.Length - newUsed - newTotalLoss;
-                    var newUtilization = (double)newUsed / newPlan.RawMaterial.Length;
-
-                    newPlans[newPlanIdx] = new CuttingPlan
-                    {
-                        RawMaterial = newPlan.RawMaterial,
-                        Parts = updatedParts,
-                        CutCount = updatedParts.Count,
-                        SingleCutLoss = lossRule.SingleCutLoss,
-                        HeadTailLoss = lossRule.HeadTailLoss,
-                        UsedLength = newUsed,
-                        TotalLoss = newTotalLoss,
-                        RemainingLength = newRemaining,
-                        Utilization = newUtilization
-                    };
-
-                    highUtilParts[(partNo, length)] -= maxFit;
-                    availableSpace = newRemaining - lossRule.SingleCutLoss;
-                }
-            }
-        }
-
-        // 构建最终结果
-        var result = new List<CuttingPlan>();
-        for (int i = 0; i < cuttingPlans.Count; i++)
-        {
-            if (!lowUtilIndices.Contains(i))
-                result.Add(cuttingPlans[i]);
-        }
-
-        result.AddRange(newPlans);
-
-        return result;
-    }
-
-    private CuttingPlan? FillMaterial(
-        RawMaterial rawMaterial,
-        List<(string PartNo, int Length, int Quantity)> parts,
-        LossRule lossRule)
-    {
-        var availableLength = rawMaterial.Length - lossRule.HeadTailLoss;
-
-        // 按长度降序排列零件
-        var sortedParts = parts.OrderByDescending(p => p.Length).ToList();
-
-        var selectedParts = new List<(string PartNo, int Length, int Quantity)>();
-        var partNoSet = new HashSet<string>();
-
-        foreach (var (partNo, partLength, remainingQty) in sortedParts)
-        {
-            if (remainingQty <= 0)
-                continue;
-
-            // 检查零件号限制
-            if (partNoSet.Count >= _config.MaxPartsPerMaterial && !partNoSet.Contains(partNo))
-                continue;
-
-            // 计算可加入数量
-            var currentLength = selectedParts.Sum(p => p.Length * p.Quantity);
-            var maxQty = Math.Min(
-                remainingQty,
-                (int)((availableLength - currentLength) / partLength)
-            );
-
-            if (maxQty > 0)
-            {
-                selectedParts.Add((partNo, partLength, maxQty));
-                partNoSet.Add(partNo);
-            }
-        }
-
-        if (!selectedParts.Any())
-            return null;
-
-        var cutCount = selectedParts.Count;
-        var usedLength = selectedParts.Sum(p => p.Length * p.Quantity);
-        var totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
-        var remaining = rawMaterial.Length - usedLength - totalLoss;
-
-        return new CuttingPlan
-        {
-            RawMaterial = rawMaterial,
-            Parts = selectedParts,
-            CutCount = cutCount,
-            SingleCutLoss = lossRule.SingleCutLoss,
-            HeadTailLoss = lossRule.HeadTailLoss,
-            UsedLength = usedLength,
-            TotalLoss = totalLoss,
-            RemainingLength = remaining,
-            Utilization = (double)usedLength / rawMaterial.Length
-        };
     }
 }

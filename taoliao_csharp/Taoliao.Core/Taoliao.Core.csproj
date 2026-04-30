@@ -1,15 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <TargetFramework>net452</TargetFramework>
     <RootNamespace>Taoliao.Core</RootNamespace>
+    <LangVersion>5</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.OrTools" Version="9.8.3296" />
-    <PackageReference Include="NPOI" Version="2.7.2" />
+    <PackageReference Include="EPPlus" Version="4.5.3.3" />
   </ItemGroup>
 
 </Project>
