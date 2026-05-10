@@ -106,7 +106,7 @@ namespace Taoliao.Core.Services
                 worksheet.Cells[row, 10].Value = plan.RemainingLength;
                 worksheet.Cells[row, 11].Value = string.Format("{0:F2}%", plan.Utilization * 100);
                 worksheet.Cells[row, 12].Value = string.Format("{0:F2}%", plan.LossRatio * 100);
-                worksheet.Cells[row, 13].Value = "";
+                worksheet.Cells[row, 13].Value = plan.Overflow ? "溢出" : "";
             }
         }
 

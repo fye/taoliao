@@ -276,9 +276,15 @@ namespace Taoliao.Core.Models
         /// </summary>
         public double Utilization { get; set; }
 
+        /// <summary>
+        /// 是否溢出（零件长度超过原材料）
+        /// </summary>
+        public bool Overflow { get; set; }
+
         public CuttingPlan()
         {
             Parts = new List<PartAllocation>();
+            Overflow = false;
         }
 
         /// <summary>

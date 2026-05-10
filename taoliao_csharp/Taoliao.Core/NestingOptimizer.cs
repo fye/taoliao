@@ -513,6 +513,10 @@ namespace Taoliao.Core
             int totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
             int remaining = rawMaterial.Length - usedLength - totalLoss;
 
+            // 如果零件总长度+损耗超过原材料长度，方案无效
+            if (remaining < 0)
+                return null;
+
             return new CuttingPlan
             {
                 RawMaterial = rawMaterial,

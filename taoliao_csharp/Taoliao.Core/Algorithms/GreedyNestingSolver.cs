@@ -124,21 +124,12 @@ namespace Taoliao.Core.Algorithms
 
                 if (bestPlan == null)
                 {
-                    // 没有材料能放下任何零件，使用最长的材料放一个零件
+                    // 没有材料能放下任何零件（溢出标记）
                     var activeSorted = activeParts.OrderByDescending(p => p.Length).ToList();
                     var part = activeSorted[0];
 
-                    RawMaterial rawMat = null;
-                    foreach (var length in sortedLengths)
-                    {
-                        if (length >= part.Length + lossRule.HeadTailLoss + lossRule.SingleCutLoss)
-                        {
-                            rawMat = lengthToMaterial[length];
-                            break;
-                        }
-                    }
-                    if (rawMat == null)
-                        rawMat = lengthToMaterial[sortedLengths.Last()];
+                    int maxAvailableLength = availableLengths.Max();
+                    var rawMat = lengthToMaterial[maxAvailableLength];
 
                     int cutCount = 1;
                     int usedLength = part.Length;
@@ -155,7 +146,8 @@ namespace Taoliao.Core.Algorithms
                         UsedLength = usedLength,
                         TotalLoss = totalLoss,
                         RemainingLength = remaining,
-                        Utilization = (double)usedLength / rawMat.Length
+                        Utilization = rawMat.Length > 0 ? (double)usedLength / rawMat.Length : 0,
+                        Overflow = remaining < 0
                     };
                 }
 
@@ -208,18 +200,21 @@ namespace Taoliao.Core.Algorithms
 
                 if (plan == null)
                 {
-                    // 没有材料能放下任何零件
+                    // 没有材料能放下任何零件（溢出标记）
                     var activeSorted = activeParts.OrderByDescending(p => p.Length).ToList();
                     var part = activeSorted[0];
+
+                    int maxAvailableLength = availableLengths.Max();
+                    var overflowMat = lengthToMaterial[maxAvailableLength];
 
                     int cutCount = 1;
                     int usedLength = part.Length;
                     int totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
-                    int remaining = maxMat.Length - usedLength - totalLoss;
+                    int remaining = overflowMat.Length - usedLength - totalLoss;
 
                     plan = new CuttingPlan
                     {
-                        RawMaterial = maxMat,
+                        RawMaterial = overflowMat,
                         Parts = new List<PartAllocation> { new PartAllocation(part.PartNo, part.Length, 1) },
                         CutCount = cutCount,
                         SingleCutLoss = lossRule.SingleCutLoss,
@@ -227,7 +222,8 @@ namespace Taoliao.Core.Algorithms
                         UsedLength = usedLength,
                         TotalLoss = totalLoss,
                         RemainingLength = remaining,
-                        Utilization = (double)usedLength / maxMat.Length
+                        Utilization = overflowMat.Length > 0 ? (double)usedLength / overflowMat.Length : 0,
+                        Overflow = remaining < 0
                     };
                 }
 
@@ -276,21 +272,12 @@ namespace Taoliao.Core.Algorithms
 
                 if (bestPlan == null)
                 {
-                    // 没有材料能放下任何零件，使用最长的材料放一个零件
+                    // 没有材料能放下任何零件（溢出标记）
                     var activeSorted = activeParts.OrderByDescending(p => p.Length).ToList();
                     var part = activeSorted[0];
 
-                    RawMaterial rawMat = null;
-                    foreach (var length in sortedLengths.OrderByDescending(l => l))
-                    {
-                        if (length >= part.Length + lossRule.HeadTailLoss + lossRule.SingleCutLoss)
-                        {
-                            rawMat = lengthToMaterial[length];
-                            break;
-                        }
-                    }
-                    if (rawMat == null)
-                        rawMat = lengthToMaterial[availableLengths.Last()];
+                    int maxAvailableLength = availableLengths.Max();
+                    var rawMat = lengthToMaterial[maxAvailableLength];
 
                     int cutCount = 1;
                     int usedLength = part.Length;
@@ -307,7 +294,8 @@ namespace Taoliao.Core.Algorithms
                         UsedLength = usedLength,
                         TotalLoss = totalLoss,
                         RemainingLength = remaining,
-                        Utilization = (double)usedLength / rawMat.Length
+                        Utilization = rawMat.Length > 0 ? (double)usedLength / rawMat.Length : 0,
+                        Overflow = remaining < 0
                     };
                 }
 
@@ -371,6 +359,10 @@ namespace Taoliao.Core.Algorithms
             int usedLength = selectedParts.Sum(p => p.Length * p.Quantity);
             int totalLoss = lossRule.HeadTailLoss + lossRule.SingleCutLoss * cutCount;
             int remaining = rawMaterial.Length - usedLength - totalLoss;
+
+            // 如果零件总长度+损耗超过原材料长度，方案无效
+            if (remaining < 0)
+                return null;
 
             return new CuttingPlan
             {

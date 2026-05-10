@@ -132,6 +132,18 @@ namespace Taoliao.CLI
                 }
             }
 
+            // 检查溢出方案
+            var overflowPlans = result.CuttingPlans.Where(p => p.Overflow).ToList();
+            if (overflowPlans.Count > 0)
+            {
+                Console.WriteLine(string.Format("  注意: {0} 个零件超出原材料长度（溢出）", overflowPlans.Count));
+                foreach (var p in overflowPlans)
+                {
+                    Console.WriteLine(string.Format("    {0} -> 原材料长度 {1}mm, 剩余 {2}mm",
+                        p.PartsDescription, p.RawMaterial.Length, p.RemainingLength));
+                }
+            }
+
             // 导出结果
             Console.WriteLine(string.Format("\n导出结果: {0}", outputFile));
             var exporter = new ResultExporter(result);
