@@ -126,16 +126,12 @@ class GreedyNestingSolver:
                     best_plan = plan
 
             if best_plan is None:
-                # 没有材料能放下任何零件，使用最长的材料放一个零件
+                # 没有材料能放下任何零件，使用最长的材料放一个零件（溢出标记）
                 active_sorted = sorted(active_parts, key=lambda x: x[1], reverse=True)
                 part_no, part_length, _ = active_sorted[0]
 
-                for length in sorted_lengths:
-                    if length >= part_length + loss_rule.head_tail_loss + loss_rule.single_cut_loss:
-                        raw_mat = length_to_material[length]
-                        break
-                else:
-                    raw_mat = length_to_material[sorted_lengths[-1]]
+                max_available_length = max(available_lengths)
+                raw_mat = length_to_material[max_available_length]
 
                 cut_count = 1
                 used_length = part_length
@@ -151,7 +147,8 @@ class GreedyNestingSolver:
                     used_length=used_length,
                     total_loss=total_loss,
                     remaining_length=remaining,
-                    utilization=used_length / raw_mat.length
+                    utilization=used_length / raw_mat.length if raw_mat.length > 0 else 0,
+                    overflow=remaining < 0
                 )
 
             # 更新剩余零件
@@ -199,17 +196,20 @@ class GreedyNestingSolver:
                             break
 
             if plan is None:
-                # 没有材料能放下任何零件
+                # 没有材料能放下任何零件（溢出标记）
                 active_sorted = sorted(active_parts, key=lambda x: x[1], reverse=True)
                 part_no, part_length, _ = active_sorted[0]
+
+                max_available_length = max(available_lengths)
+                overflow_mat = length_to_material[max_available_length]
 
                 cut_count = 1
                 used_length = part_length
                 total_loss = loss_rule.head_tail_loss + loss_rule.single_cut_loss * cut_count
-                remaining = max_mat.length - used_length - total_loss
+                remaining = overflow_mat.length - used_length - total_loss
 
                 plan = CuttingPlan(
-                    raw_material=max_mat,
+                    raw_material=overflow_mat,
                     parts=[(part_no, part_length, 1)],
                     cut_count=cut_count,
                     single_cut_loss=loss_rule.single_cut_loss,
@@ -217,7 +217,8 @@ class GreedyNestingSolver:
                     used_length=used_length,
                     total_loss=total_loss,
                     remaining_length=remaining,
-                    utilization=used_length / max_mat.length
+                    utilization=used_length / overflow_mat.length if overflow_mat.length > 0 else 0,
+                    overflow=remaining < 0
                 )
 
             # 更新剩余零件
@@ -266,16 +267,12 @@ class GreedyNestingSolver:
                     break
 
             if best_plan is None:
-                # 没有材料能放下任何零件，使用最长的材料放一个零件
+                # 没有材料能放下任何零件（溢出标记）
                 active_sorted = sorted(active_parts, key=lambda x: x[1], reverse=True)
                 part_no, part_length, _ = active_sorted[0]
 
-                for length in sorted(available_lengths, reverse=True):
-                    if length >= part_length + loss_rule.head_tail_loss + loss_rule.single_cut_loss:
-                        raw_mat = length_to_material[length]
-                        break
-                else:
-                    raw_mat = length_to_material[available_lengths[-1]]
+                max_available_length = max(available_lengths)
+                raw_mat = length_to_material[max_available_length]
 
                 cut_count = 1
                 used_length = part_length
@@ -291,7 +288,8 @@ class GreedyNestingSolver:
                     used_length=used_length,
                     total_loss=total_loss,
                     remaining_length=remaining,
-                    utilization=used_length / raw_mat.length
+                    utilization=used_length / raw_mat.length if raw_mat.length > 0 else 0,
+                    overflow=remaining < 0
                 )
 
             # 更新剩余零件
@@ -362,6 +360,10 @@ class GreedyNestingSolver:
         used_length = sum(p[1] * p[2] for p in selected_parts)
         total_loss = loss_rule.head_tail_loss + loss_rule.single_cut_loss * cut_count
         remaining = raw_material.length - used_length - total_loss
+
+        # 如果零件总长度+损耗超过原材料长度，方案无效
+        if remaining < 0:
+            return None
 
         return CuttingPlan(
             raw_material=raw_material,

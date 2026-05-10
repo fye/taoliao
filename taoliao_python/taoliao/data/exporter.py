@@ -90,7 +90,7 @@ class ResultExporter:
                 '剩余长度': plan.remaining_length,
                 '利用率': f'{plan.utilization * 100:.2f}%',
                 '损耗比': f'{plan.loss_ratio * 100:.2f}%',
-                '备注': ''
+                '备注': '溢出' if plan.overflow else ''
             })
 
         df = pd.DataFrame(data)

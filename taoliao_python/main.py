@@ -193,6 +193,13 @@ def main():
         for detail in validation_result.get('details', []):
             print(f"    {detail}")
 
+    # 检查溢出方案
+    overflow_plans = [p for p in result.cutting_plans if p.overflow]
+    if overflow_plans:
+        print(f"  注意: {len(overflow_plans)} 个零件超出原材料长度（溢出）")
+        for p in overflow_plans:
+            print(f"    {p.parts_description} -> 原材料长度 {p.raw_material.length}mm, 剩余 {p.remaining_length}mm")
+
     # 获取求解器统计
     stats = optimizer.get_solver_stats()
     if stats:

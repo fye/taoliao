@@ -120,6 +120,7 @@ class CuttingPlan:
     total_loss: int                              # 总损耗
     remaining_length: int                        # 剩余长度
     utilization: float                           # 利用率
+    overflow: bool = False                       # 是否溢出（零件长度超过原材料）
 
     @property
     def parts_description(self) -> str:

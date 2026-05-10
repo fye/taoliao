@@ -686,16 +686,18 @@ class NestingOptimizer:
                 active_sorted = sorted(active, key=lambda x: x[1], reverse=True)
                 part_no, part_length, _ = active_sorted[0]
 
+                max_available_length = max(available_lengths)
                 for length in available_lengths:
                     if length >= part_length + loss_rule.head_tail_loss + loss_rule.single_cut_loss:
                         raw_mat = length_to_material[length]
                         break
                 else:
-                    raw_mat = length_to_material[available_lengths[-1]]
+                    raw_mat = length_to_material[max_available_length]
 
                 cut_count = 1
                 used_length = part_length
                 total_loss = loss_rule.head_tail_loss + loss_rule.single_cut_loss * cut_count
+                remaining_len = raw_mat.length - used_length - total_loss
 
                 best_plan = CuttingPlan(
                     raw_material=raw_mat,
@@ -705,8 +707,9 @@ class NestingOptimizer:
                     head_tail_loss=loss_rule.head_tail_loss,
                     used_length=used_length,
                     total_loss=total_loss,
-                    remaining_length=raw_mat.length - used_length - total_loss,
-                    utilization=used_length / raw_mat.length
+                    remaining_length=remaining_len,
+                    utilization=used_length / raw_mat.length if raw_mat.length > 0 else 0,
+                    overflow=remaining_len < 0
                 )
 
             # 更新剩余零件
@@ -823,6 +826,9 @@ class NestingOptimizer:
         total_loss = loss_rule.head_tail_loss + loss_rule.single_cut_loss * cut_count
         remaining = raw_material.length - used_length - total_loss
 
+        if remaining < 0:
+            return None
+
         return CuttingPlan(
             raw_material=raw_material,
             parts=selected_parts,
@@ -832,7 +838,7 @@ class NestingOptimizer:
             used_length=used_length,
             total_loss=total_loss,
             remaining_length=remaining,
-            utilization=used_length / raw_material.length
+            utilization=used_length / raw_material.length if raw_material.length > 0 else 0
         )
 
     def _greedy_fill_best_fit(
@@ -905,6 +911,9 @@ class NestingOptimizer:
         total_loss = loss_rule.head_tail_loss + loss_rule.single_cut_loss * cut_count
         remaining = raw_material.length - used_length - total_loss
 
+        if remaining < 0:
+            return None
+
         return CuttingPlan(
             raw_material=raw_material,
             parts=selected_parts,
@@ -914,7 +923,7 @@ class NestingOptimizer:
             used_length=used_length,
             total_loss=total_loss,
             remaining_length=remaining,
-            utilization=used_length / raw_material.length
+            utilization=used_length / raw_material.length if raw_material.length > 0 else 0
         )
 
     def _global_material_optimize(
